@@ -178,6 +178,97 @@ def quality_vs_latency(data: dict[str, Any], out: Path) -> list[Path]:
     return written
 
 
+def calibration_curves(study: dict[str, Any], out: Path, rule: str = "max") -> list[Path]:
+    """Two panels over the number of golden samples: false alarms (vs the 1/(N+1) law), recall."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    n_values = study["n_values"]
+    written = []
+    themes: dict[str, dict[str, Any]] = THEMES
+    for mode, theme in themes.items():
+        fig, axes = plt.subplots(1, 2, figsize=(9, 3.8), dpi=150)
+        fig.patch.set_facecolor(theme["surface"])
+        for ax in axes:
+            ax.set_facecolor(theme["surface"])
+            for side in ("top", "right"):
+                ax.spines[side].set_visible(False)
+            for side in ("left", "bottom"):
+                ax.spines[side].set_color(theme["grid"])
+            ax.tick_params(colors=theme["muted"], labelsize=9)
+            ax.grid(True, color=theme["grid"], linewidth=0.8)
+            ax.set_axisbelow(True)
+            ax.set_xticks(n_values)
+            ax.set_xlabel("golden samples N", color=theme["muted"], fontsize=9)
+        alarms, recall = axes
+        theory = [100 / (n + 1) for n in n_values]
+        alarms.plot(
+            n_values,
+            theory,
+            color=theme["text"],
+            linewidth=1.5,
+            linestyle=(0, (3, 3)),
+            label="theory: 1 / (N + 1)",
+            zorder=5,
+        )
+        for method, color in zip(study["methods"], theme["series"], strict=False):
+            cells = study["methods"][method]
+            name = METHOD_NAMES.get(method, method)
+            fa = [cells[f"{rule}@{n}"]["false_alarm_mean"] * 100 for n in n_values]
+            rc = [cells[f"{rule}@{n}"]["recall_mean"] * 100 for n in n_values]
+            alarms.plot(n_values, fa, color=color, linewidth=2, marker="o", markersize=5)
+            recall.plot(
+                n_values, rc, color=color, linewidth=2, marker="o", markersize=5, label=name
+            )
+        alarms.set_title(
+            "False alarms on good parts (%)", color=theme["text"], fontsize=10, loc="left"
+        )
+        recall.set_title("Defects caught (%)", color=theme["text"], fontsize=10, loc="left")
+        alarms.set_ylim(bottom=0)
+        recall.set_ylim(0, 100)
+        fig.suptitle(
+            "Calibrating on golden samples: how many are enough?",
+            x=0.05,
+            y=0.98,
+            ha="left",
+            fontsize=12,
+            fontweight="bold",
+            color=theme["text"],
+        )
+        fig.text(
+            0.05,
+            0.915,
+            f"Threshold = highest score among N good parts; mean over parts and "
+            f"{study['trials']} random draws each.",
+            ha="left",
+            va="top",
+            fontsize=8.5,
+            color=theme["muted"],
+        )
+        handles = [*recall.get_legend_handles_labels()[0], *alarms.get_legend_handles_labels()[0]]
+        labels = [*recall.get_legend_handles_labels()[1], *alarms.get_legend_handles_labels()[1]]
+        legend = fig.legend(
+            handles,
+            labels,
+            frameon=False,
+            fontsize=8.5,
+            loc="lower center",
+            ncol=len(labels),
+            bbox_to_anchor=(0.5, 0.0),
+        )
+        for text in legend.get_texts():
+            text.set_color(theme["text"])
+        fig.tight_layout(rect=(0, 0.08, 1, 0.9))
+        path = out.with_name(f"{out.name}-{mode}.png")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(path, facecolor=theme["surface"])
+        plt.close(fig)
+        written.append(path)
+    return written
+
+
 def render_all(data: dict[str, Any], assets_dir: Path) -> list[Path]:
     if not data["method_order"]:
         return []

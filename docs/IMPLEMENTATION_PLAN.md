@@ -89,7 +89,11 @@ Methods compared:
   0.07 s / 18 s / 35 s
 - ⬜ Failure gallery (VLM boxes vs ground truth) in the README
 - ⬜ Prompt v2 aligned with VisA's exact defect taxonomy (the run used a simplified list)
-- ⬜ Calibration study: golden-sample count vs threshold stability (one-shot scores saturate near 1)
+- ✅ Calibration study (`vlm-inspect calibration-study`, no model runs): with the max-of-N rule
+  the false-alarm rate follows 1/(N+1) for every model (16 / 9 / 5 / 2.4 % at N = 5 / 10 / 20 / 40);
+  N = 5 → 40 costs YOLO 12 points of recall and the VLM 21-29; per-part VLM recall at N = 20
+  varies by ±14-20 points across golden draws; a logit-Gaussian rule helps one-shot (60 %) but
+  hurts YOLO (62 %)
 
 ## M3 - Inspection service ✅
 

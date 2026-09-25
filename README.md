@@ -72,6 +72,29 @@ The one-shot result was not tuned: prompts, the 768-px input size and the calibr
 fixed before the run. The prompts also use a simplified defect list rather than VisA's exact
 taxonomy; aligning them is a planned follow-up experiment ([plan](docs/IMPLEMENTATION_PLAN.md)).
 
+### Follow-up: how many golden samples does a threshold need?
+
+The benchmark sets each threshold from 20 defect-free images. `vlm-inspect calibration-study`
+re-thresholds the scores the benchmark already produced (no model runs): it draws N good parts at
+random for calibration, measures false alarms on the good parts not drawn and recall on all
+defects, and repeats that 500 times per part.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/calibration_study-dark.png">
+  <img alt="Two panels against the number of golden samples N (5, 10, 20, 40). Left: false alarms fall from about 16 % to 2.4 % and every method sits on the 1/(N+1) theory curve. Right: YOLO catches 87 % to 75 % of defects, both VLM variants fall from about 70 % to 45-49 %" src="docs/assets/calibration_study-light.png">
+</picture>
+
+- **The false-alarm rate is set by N alone.** With "highest golden score" as the threshold, a new
+  good part scores higher with probability 1/(N+1), whatever the model. All three methods sit on
+  that curve: 16 % at N = 5, 9 % at 10, 5 % at 20, 2.4 % at 40. N is the knob for false alarms.
+- **The model decides what that costs in recall.** Going from 5 to 40 golden samples costs YOLO
+  12 points of recall and the VLM 21-29 points, because the VLM gives many good parts
+  defect-like scores.
+- **The VLM operating point is fragile.** At N = 20, the recall of one-shot on candles is
+  83 ± 14 % across draws, and on PCBs 22 ± 14 %. The single benchmark draw (41 %) is one sample
+  from that spread. A fitted threshold (mean + 2 sd of the logit) steadies it slightly (one-shot
+  60 % at 5.3 % false alarms) but costs YOLO 17 points, so it is not a general fix.
+
 ## Inspection service
 
 ```bash
