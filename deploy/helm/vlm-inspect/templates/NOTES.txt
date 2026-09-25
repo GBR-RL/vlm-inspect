@@ -1,0 +1,14 @@
+vlm-inspect is starting (methods: {{ join ", " .Values.inspection.methods }}).
+
+Open the demo page and the API docs:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "vlm-inspect.fullname" . }} 8000:{{ .Values.service.port }}
+  http://localhost:8000/        demo page
+  http://localhost:8000/docs    API
+
+Check the deployment end to end:
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }} --logs
+{{- if not .Values.modelCache.enabled }}
+
+Model weights are cached in an emptyDir and downloaded again on every pod start.
+Set modelCache.enabled=true for the real models.
+{{- end }}

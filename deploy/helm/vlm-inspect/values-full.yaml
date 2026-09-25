@@ -1,0 +1,19 @@
+# Real models on CPU: helm install vlm deploy/helm/vlm-inspect -f deploy/helm/vlm-inspect/values-full.yaml
+image:
+  tag: full
+inspection:
+  methods: ["yolo", "qwen-zero", "qwen-oneshot", "stub"]
+  ragEmbedder: minilm
+  # yoloWeightsUrl: https://.../best.pt
+modelCache:
+  enabled: true
+  size: 20Gi
+resources:
+  requests: {cpu: "4", memory: 14Gi}
+  limits: {memory: 16Gi}
+startupProbe:
+  failureThreshold: 120
+livenessProbe:
+  # A CPU VLM request takes 20-40 s and holds the model lock; give /health room.
+  timeoutSeconds: 30
+  failureThreshold: 5

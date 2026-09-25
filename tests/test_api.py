@@ -49,6 +49,22 @@ def test_health_reports_database_and_methods(client) -> None:
     assert body == {"status": "ok", "database": "ok", "methods": ["stub"]}
 
 
+def test_ready_when_the_database_answers(client) -> None:
+    response = client.get("/ready")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
+def test_not_ready_without_a_database(tmp_path) -> None:
+    missing = tmp_path / "no-such-dir" / "db.sqlite"  # SQLite cannot create it: connect fails
+    app = create_app(Settings(database_url=f"sqlite:///{missing.as_posix()}", api_methods=["stub"]))
+    with TestClient(app) as test_client:
+        response = test_client.get("/ready")
+        assert response.status_code == 503
+        assert response.json()["status"] == "unavailable"
+        assert test_client.get("/health").status_code == 200  # liveness stays up
+
+
 def test_parts_lists_the_catalogue(client) -> None:
     names = {p["name"] for p in client.get("/parts").json()}
     assert names == {"pcb1", "candle", "capsules"}
@@ -156,3 +172,21 @@ def test_good_part_report_accepts(client) -> None:
 
 def test_report_for_unknown_inspection_is_404(client) -> None:
     assert client.post("/inspections/999/report").status_code == 404
+
+
+def test_smoke_test_passes_against_the_app(client, monkeypatch) -> None:
+    from vlm_inspect import smoke
+
+    def request(url: str, data: bytes | None = None, headers: dict | None = None) -> bytes:
+        path = url.removeprefix("http://service")
+        if data is None:
+            response = client.get(path)
+        else:
+            response = client.post(path, content=data, headers=headers or {})
+        response.raise_for_status()
+        return response.content
+
+    monkeypatch.setattr(smoke, "_request", request)
+    result = smoke.run("http://service/")
+    assert result["citations"]
+    assert result["health"]["database"] == "ok"

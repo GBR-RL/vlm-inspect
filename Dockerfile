@@ -24,6 +24,8 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE alembic.ini ./
 COPY migrations ./migrations
 COPY src ./src
+# Inspection specifications that grounded reports cite.
+COPY data/specs ./data/specs
 
 FROM base AS api
 RUN pip install ".[api]"

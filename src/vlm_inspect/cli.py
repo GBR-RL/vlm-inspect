@@ -273,6 +273,19 @@ def calibration_study(
             typer.echo(f"wrote {path}")
 
 
+@app.command("smoke-test")
+def smoke_test(
+    url: Annotated[str, typer.Option(help="Base URL of a running service")] = (
+        "http://localhost:8000"
+    ),
+    part: str = "pcb1",
+) -> None:
+    """Inspects a synthetic image end to end through a running service (needs the stub method)."""
+    from vlm_inspect.smoke import run
+
+    typer.echo(json.dumps(run(url, part), indent=2))
+
+
 @app.command("serve")
 def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
     """Runs the inspection API (settings from VLM_INSPECT_* environment variables)."""

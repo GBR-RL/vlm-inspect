@@ -1,0 +1,10 @@
+apiVersion: v2
+name: vlm-inspect
+description: Industrial visual inspection API (VLM or trained detector) with PostgreSQL + pgvector
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/GBR-RL/vlm-inspect
+sources:
+  - https://github.com/GBR-RL/vlm-inspect
+keywords: [inspection, computer-vision, vlm, fastapi, pgvector]
