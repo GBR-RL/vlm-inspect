@@ -68,24 +68,30 @@ Methods compared:
   unit tests run without torch.
 - This plan, evaluation protocol, MIT licence
 
-## M1 - Evaluation core 🔄
+## M1 - Evaluation core ✅
 
 - `data.visa`: download, selective extraction, protocol split, mask → boxes, YOLO export
 - `inspectors`: one `Inspector` interface; `YoloInspector`, `QwenVLInspector` (zero- and
   one-shot, continuous defect score from the model's yes/no token probabilities, JSON bounding
   boxes), `StubInspector` for tests
 - `eval`: metrics, runner (per-image predictions to JSONL, summary JSON, MLflow logging), charts
-- CLI: `vlm-inspect data prepare`, `vlm-inspect train-yolo`, `vlm-inspect eval`
+- CLI: `vlm-inspect data-prepare`, `vlm-inspect train-yolo`, `vlm-inspect eval`, `vlm-inspect report`
+- Golden-sample calibration and a pointing metric, both added after a 2-image smoke test and
+  before any evaluation run (recorded in EVAL_PROTOCOL.md)
 
-## M2 - Baselines and results ⬜
+## M2 - Baselines and results ✅
 
-- Train YOLO in CI (CPU); weights published as a release asset
-- Benchmark workflow: every method × category in parallel CI jobs; results and charts as artefacts
-- README results: accuracy vs latency, per-category AUROC, localisation hit rate, failure gallery
-- Written finding: where the VLM wins (no labels, new defect types described in text) and where it
-  loses (small defects, latency)
+- Benchmark workflow on free runners (2 h 55 min): calibration → 18 VLM shards → YOLO trained in
+  CI (768 px, 60 epochs) → same-machine latency job → report and charts
+- Results (410 held-out images, AMD EPYC 9V74, 4 vCPU): mean AUROC YOLO 0.954, Qwen3-VL zero-shot
+  0.876, one-shot 0.920; the VLM beats YOLO on candles (0.98 vs 0.92) with no defect labels;
+  recall at ≤ 3 % false alarms 73 % / 51 % / 41 %; box on defect 71 % / 28 % / 23 %; latency
+  0.07 s / 18 s / 35 s
+- ⬜ Failure gallery (VLM boxes vs ground truth) in the README
+- ⬜ Prompt v2 aligned with VisA's exact defect taxonomy (the run used a simplified list)
+- ⬜ Calibration study: golden-sample count vs threshold stability (one-shot scores saturate near 1)
 
-## M3 - Inspection service ⬜
+## M3 - Inspection service ✅
 
 - FastAPI: `POST /inspect` (image + part + method), `GET /inspections/{id}`, `/health`,
   Prometheus `/metrics`
@@ -93,13 +99,16 @@ Methods compared:
 - Docker image (CPU) and Docker Compose (API + Postgres + MLflow)
 - API tests against a real Postgres service container in CI
 
-## M4 - Grounded reports (RAG) ⬜
+## M4 - Grounded reports (RAG) ✅
 
 - Inspection specifications per part (authored for this repo, IP-clean), chunked into clauses
 - Embeddings (sentence-transformers) stored in Postgres with pgvector; top-k clause retrieval
 - The VLM writes the inspection report citing clause IDs; citations are validated against the
   retrieved set, and reports citing unknown clauses are rejected
-- Evaluation: citation validity rate and clause-retrieval recall on a labelled question set
+- Evaluation: clause retrieval on 36 labelled queries: recall@1/@3 lexical 0.78/0.92, MiniLM
+  0.89/0.97 (fusion measured, no gain)
+- ⬜ LLM report quality on the benchmark's real VLM findings: citation validity and agreement
+  with the rule-based verdict
 
 ## M5 - Kubernetes deployment ⬜
 
@@ -112,9 +121,11 @@ Methods compared:
 - Minimal web page to upload an image and see boxes + report
 - Demo GIF, short write-up of the findings, CV bullet
 
-## CV bullet (fill in the numbers after M2)
+## CV bullet
 
 > Built **vlm-inspect**, an industrial inspection service comparing an open-weight VLM
-> (Qwen3-VL, zero/one-shot) against a trained YOLO detector on VisA: **X** AUROC vs **Y**, at
-> **Z×** the latency. Shipped as FastAPI + PostgreSQL/pgvector + MLflow with RAG-grounded
-> reports, containerised and deployed via Helm (tested on Kubernetes in CI).
+> (Qwen3-VL-2B, zero/one-shot) with a trained YOLO detector on VisA: 0.92 AUROC with no defect
+> labels (beating YOLO on one part, 0.98 vs 0.92) vs 0.95 for YOLO trained on 40 defects per part,
+> at 250-500× the CPU latency. Shipped as FastAPI + PostgreSQL/pgvector with calibrated operating
+> points and RAG-grounded, citation-validated reports; Docker, Alembic, CI incl. PostgreSQL and
+> container smoke tests.
