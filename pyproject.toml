@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vlm-inspect"
+version = "0.1.0"
+description = "Industrial visual inspection: open-weight VLMs vs a trained detector, served as a production ML service"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Rohiith Gettala Balachandar" }]
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "pillow>=10",
+  "opencv-python-headless>=4.9",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "scikit-learn>=1.4",
+  "typer>=0.12",
+]
+
+[project.optional-dependencies]
+# torch is installed separately (CPU wheel index) in CI and in the Docker image.
+vlm = ["transformers>=4.57", "accelerate>=1.0"]
+yolo = ["ultralytics>=8.3"]
+api = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.9",
+  "sqlalchemy>=2.0",
+  "psycopg[binary]>=3.2",
+  "pgvector>=0.3",
+  "alembic>=1.13",
+  "prometheus-client>=0.20",
+]
+rag = ["sentence-transformers>=3.0"]
+track = ["mlflow-skinny>=2.14"]
+plots = ["matplotlib>=3.8"]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6", "mypy>=1.11"]
+
+[project.scripts]
+vlm-inspect = "vlm_inspect.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vlm_inspect"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "N", "PL", "PT", "RET", "C4"]
+ignore = ["PLR0913", "PLR2004", "PLC0415"]  # many-args APIs, magic numbers in metrics, lazy imports
+
+[tool.ruff.lint.per-file-ignores]
+"src/vlm_inspect/cli.py" = ["PLR0917"]  # Typer maps parameters to CLI flags
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+files = ["src/vlm_inspect"]
+
+# Model libraries are optional extras and not installed for CI type-checking; treat them as
+# untyped everywhere so results do not depend on which extras happen to be installed.
+[[tool.mypy.overrides]]
+module = ["torch.*", "transformers.*", "ultralytics.*", "mlflow.*"]
+follow_imports = "skip"
+follow_untyped_imports = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = ["slow: needs model weights or the dataset (not run in CI unit tests)"]
