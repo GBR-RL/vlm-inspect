@@ -1,0 +1,25 @@
+{
+  "_comment": "VisA defect classes (<part>/image_anno.csv) -> specification clauses that correctly describe them. Several entries list two clauses when the class does not decide between them (a scratch is deep or superficial).",
+  "pcb1": {
+    "melt": ["PCB1-THM-01"],
+    "missing": ["PCB1-CMP-01"],
+    "bent": ["PCB1-CMP-02"],
+    "scratch": ["PCB1-SRF-01", "PCB1-SRF-02"]
+  },
+  "candle": {
+    "damaged corner of packaging": ["CND-PKG-01"],
+    "different colour spot": ["CND-COL-01"],
+    "chunk of wax missing": ["CND-WAX-01"],
+    "foreign particals on candle": ["CND-FOR-01"],
+    "wax melded out of the candle": ["CND-WAX-03"],
+    "weird candle wick": ["CND-WCK-01"],
+    "extra wax in candle": ["CND-WAX-02"]
+  },
+  "capsules": {
+    "bubble": ["CAP-BUB-01"],
+    "discolor": ["CAP-COL-01"],
+    "scratch": ["CAP-SRF-01"],
+    "leak": ["CAP-LEK-01"],
+    "misshape": ["CAP-SHP-01"]
+  }
+}

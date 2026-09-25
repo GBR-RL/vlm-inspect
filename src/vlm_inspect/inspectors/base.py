@@ -50,5 +50,6 @@ def create_inspector(
             threshold=settings.vlm_threshold,
             max_new_tokens=settings.vlm_max_new_tokens,
             references=references if method == "qwen-oneshot" else None,
+            prompt_version=settings.vlm_prompt_version,
         )
     raise ValueError(f"unknown method '{method}' (known: {', '.join(METHODS)})")

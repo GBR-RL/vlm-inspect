@@ -76,6 +76,7 @@ class QwenVLInspector:
         max_new_tokens: int = 160,
         references: dict[str, Path] | None = None,
         dtype: str = "float32",
+        prompt_version: str = "v1",
         localize: bool = True,
     ) -> None:
         import torch
@@ -91,6 +92,7 @@ class QwenVLInspector:
         self.threshold = threshold
         self.max_new_tokens = max_new_tokens
         self.localize = localize
+        self.prompt_version = prompt_version
         self.references = {
             part: fit_longest_side(Image.open(path).convert("RGB"), max_side)
             for part, path in (references or {}).items()
@@ -164,7 +166,7 @@ class QwenVLInspector:
 
     def inspect(self, image: Image.Image, part: str) -> InspectionResult:
         start = time.perf_counter()
-        spec = get_part(part)
+        spec = get_part(part, self.prompt_version)
         original = image.convert("RGB")
         small = fit_longest_side(original, self.max_side)
         score = self.defect_probability(small, spec)
