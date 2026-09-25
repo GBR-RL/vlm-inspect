@@ -56,7 +56,7 @@ def wait_ready(base_url: str, timeout_s: float = 120.0) -> None:
 
 
 def run(base_url: str, part: str = "pcb1") -> dict[str, Any]:
-    """Inspects a synthetic image, reads it back, writes its report and checks the metrics."""
+    """Inspects a synthetic image, reads it back, writes its report, checks metrics and the page."""
     base_url = base_url.rstrip("/")
     wait_ready(base_url)
     boundary = uuid.uuid4().hex
@@ -84,6 +84,8 @@ def run(base_url: str, part: str = "pcb1") -> dict[str, Any]:
     metrics = _request(f"{base_url}/metrics").decode()
     if "vlm_inspect_inspections_total" not in metrics:
         raise AssertionError("inspection counter missing from /metrics")
+    if b"vlm-inspect" not in _request(f"{base_url}/"):
+        raise AssertionError("demo page missing")
     health = _json(f"{base_url}/health")
     return {
         "inspection": created["id"],
