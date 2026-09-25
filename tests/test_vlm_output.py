@@ -93,3 +93,12 @@ def test_duplicate_boxes_are_reported_once() -> None:
         '[{"bbox_2d": [10, 10, 50, 50], "label": "a"}, {"bbox_2d": [10, 10, 50, 50], "label": "b"}]'
     )
     assert len(parse_findings(text, 1000, 1000, 0.5)) == 1
+
+
+def test_extract_json_returns_the_outer_structure() -> None:
+    # Regression: an object containing a list used to come back as the inner list.
+    assert extract_json('{"verdict": "REJECT", "citations": ["A", "B"]}') == {
+        "verdict": "REJECT",
+        "citations": ["A", "B"],
+    }
+    assert extract_json('text [{"bbox_2d": [1, 2, 3, 4]}] more') == [{"bbox_2d": [1, 2, 3, 4]}]

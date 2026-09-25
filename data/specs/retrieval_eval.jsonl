@@ -1,0 +1,36 @@
+{"part": "pcb1", "query": "missing component", "expected": "PCB1-CMP-01"}
+{"part": "pcb1", "query": "one of the four header pins is not there", "expected": "PCB1-CMP-01"}
+{"part": "pcb1", "query": "empty footprint where a part should be", "expected": "PCB1-CMP-01"}
+{"part": "pcb1", "query": "bent component", "expected": "PCB1-CMP-02"}
+{"part": "pcb1", "query": "a pin is sticking out sideways", "expected": "PCB1-CMP-02"}
+{"part": "pcb1", "query": "transducer is tilted", "expected": "PCB1-CMP-02"}
+{"part": "pcb1", "query": "melted component", "expected": "PCB1-THM-01"}
+{"part": "pcb1", "query": "burn marks and warped plastic on the header", "expected": "PCB1-THM-01"}
+{"part": "pcb1", "query": "scratch", "expected": ["PCB1-SRF-01", "PCB1-SRF-02"]}
+{"part": "pcb1", "query": "deep gouge showing copper", "expected": "PCB1-SRF-01"}
+{"part": "pcb1", "query": "light scuff on the solder mask, copper not visible", "expected": "PCB1-SRF-02"}
+{"part": "pcb1", "query": "solder ball on the board", "expected": "PCB1-SRF-03"}
+{"part": "candle", "query": "damaged corner of packaging", "expected": "CND-PKG-01"}
+{"part": "candle", "query": "the aluminium cup is dented", "expected": "CND-PKG-01"}
+{"part": "candle", "query": "chunk of wax missing", "expected": "CND-WAX-01"}
+{"part": "candle", "query": "a piece broke off the edge of the candle", "expected": "CND-WAX-01"}
+{"part": "candle", "query": "extra wax in candle", "expected": "CND-WAX-02"}
+{"part": "candle", "query": "lump of wax on top", "expected": "CND-WAX-02"}
+{"part": "candle", "query": "wax melded out of the candle", "expected": "CND-WAX-03"}
+{"part": "candle", "query": "wax ran over the rim", "expected": "CND-WAX-03"}
+{"part": "candle", "query": "different colour spot", "expected": "CND-COL-01"}
+{"part": "candle", "query": "yellow stain on the wax", "expected": "CND-COL-01"}
+{"part": "candle", "query": "foreign particles on candle", "expected": "CND-FOR-01"}
+{"part": "candle", "query": "a hair stuck in the wax", "expected": "CND-FOR-01"}
+{"part": "candle", "query": "weird candle wick", "expected": "CND-WCK-01"}
+{"part": "candle", "query": "wick is bent and off-centre", "expected": "CND-WCK-01"}
+{"part": "capsules", "query": "leak", "expected": "CAP-LEK-01"}
+{"part": "capsules", "query": "oily trace next to a capsule", "expected": "CAP-LEK-01"}
+{"part": "capsules", "query": "misshape", "expected": "CAP-SHP-01"}
+{"part": "capsules", "query": "a capsule is squashed flat", "expected": "CAP-SHP-01"}
+{"part": "capsules", "query": "bubble", "expected": "CAP-BUB-01"}
+{"part": "capsules", "query": "air pocket inside the gel", "expected": "CAP-BUB-01"}
+{"part": "capsules", "query": "discolor", "expected": "CAP-COL-01"}
+{"part": "capsules", "query": "brown patch on a capsule", "expected": "CAP-COL-01"}
+{"part": "capsules", "query": "scratch", "expected": "CAP-SRF-01"}
+{"part": "capsules", "query": "scuff mark on the shell", "expected": "CAP-SRF-01"}
