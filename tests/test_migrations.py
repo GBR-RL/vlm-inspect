@@ -7,6 +7,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import create_engine, inspect
 
 from vlm_inspect.api.db import Base
@@ -29,8 +30,17 @@ def test_upgrade_matches_models_and_downgrade_is_clean(tmp_path, monkeypatch) ->
 
     command.upgrade(config, "head")
     engine = create_engine(url)
+
+    def compare_type(context, inspected, metadata, inspected_type, metadata_type):
+        # SQLite has no vector type and reflects VECTOR(384) as NUMERIC(384); pgvector columns are
+        # only meaningful (and fully compared) on PostgreSQL.
+        if engine.dialect.name == "sqlite" and isinstance(metadata_type, Vector):
+            return False
+        return None  # default comparison
+
     with engine.connect() as connection:
-        diff = compare_metadata(MigrationContext.configure(connection), Base.metadata)
+        context = MigrationContext.configure(connection, opts={"compare_type": compare_type})
+        diff = compare_metadata(context, Base.metadata)
     assert diff == [], f"migrations and models disagree: {diff}"
 
     command.downgrade(config, "base")

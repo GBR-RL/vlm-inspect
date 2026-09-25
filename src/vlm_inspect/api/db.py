@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, create_engine
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -19,6 +21,8 @@ from sqlalchemy.orm import (
     relationship,
     sessionmaker,
 )
+
+from vlm_inspect.rag.embed import EMBEDDING_DIM
 
 
 class Base(DeclarativeBase):
@@ -68,6 +72,39 @@ class Finding(Base):
     y2: Mapped[float]
 
     inspection: Mapped[Inspection] = relationship(back_populates="findings")
+
+
+class Report(Base):
+    """The grounded report for an inspection (latest one wins)."""
+
+    __tablename__ = "reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    inspection_id: Mapped[int] = mapped_column(
+        ForeignKey("inspections.id", ondelete="CASCADE"), unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    verdict: Mapped[str] = mapped_column(String(16))
+    summary: Mapped[str] = mapped_column(Text)
+    citations: Mapped[list[str]] = mapped_column(JSON)
+    retrieved: Mapped[list[str]] = mapped_column(JSON)
+    generator: Mapped[str] = mapped_column(String(64))
+    rejected_llm_output: Mapped[str | None] = mapped_column(Text)
+
+
+class SpecClause(Base):
+    """Specification clauses with their embeddings: pgvector on PostgreSQL."""
+
+    __tablename__ = "spec_clauses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    clause_id: Mapped[str] = mapped_column(String(64), unique=True)
+    part: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(256))
+    text: Mapped[str] = mapped_column(Text)
+    verdict: Mapped[str | None] = mapped_column(String(16))
+    embedder: Mapped[str] = mapped_column(String(128))
+    embedding: Mapped[Any] = mapped_column(Vector(EMBEDDING_DIM))
 
 
 def make_engine(url: str) -> Engine:

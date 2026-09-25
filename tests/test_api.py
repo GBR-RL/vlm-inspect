@@ -1,6 +1,7 @@
 import io
 import json
 import os
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -34,6 +35,7 @@ def client(tmp_path):
         calibration_dir=tmp_path / "results",
         data_dir=tmp_path / "data",
         max_upload_bytes=100_000,
+        spec_dir=Path(__file__).resolve().parents[1] / "data" / "specs",
     )
     with TestClient(create_app(settings)) as test_client:
         yield test_client
@@ -124,3 +126,33 @@ def test_metrics_count_inspections(client) -> None:
     text = client.get("/metrics").text
     assert 'vlm_inspect_inspections_total{method="stub",part="pcb1",result="defective"} 1.0' in text
     assert "vlm_inspect_inspection_seconds_bucket" in text
+
+
+def test_report_is_grounded_in_the_specification(client) -> None:
+    inspection = client.post(
+        "/inspect", files={"file": ("x.png", _png(230), "image/png")}, data={"part": "pcb1"}
+    ).json()
+    assert client.get(f"/inspections/{inspection['id']}/report").status_code == 404
+
+    report = client.post(f"/inspections/{inspection['id']}/report").json()
+    assert report["inspection_id"] == inspection["id"]
+    assert report["generator"] == "rules"
+    # The stub's finding ("bright spot") matches no defect clause specifically, but every cited
+    # clause must exist in the pcb1 specification and carry a verdict.
+    assert report["verdict"] in {"REVIEW", "REJECT"}
+    assert report["citations"]
+    assert all(c.startswith("PCB1-") for c in report["citations"])
+    assert client.get(f"/inspections/{inspection['id']}/report").json() == report
+
+
+def test_good_part_report_accepts(client) -> None:
+    inspection = client.post(
+        "/inspect", files={"file": ("x.png", _png(20), "image/png")}, data={"part": "capsules"}
+    ).json()
+    report = client.post(f"/inspections/{inspection['id']}/report").json()
+    assert report["verdict"] == "ACCEPT"
+    assert report["citations"] == []
+
+
+def test_report_for_unknown_inspection_is_404(client) -> None:
+    assert client.post("/inspections/999/report").status_code == 404
