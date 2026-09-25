@@ -242,6 +242,37 @@ def report_eval(
     typer.echo(json.dumps(evaluation["summary"], indent=2))
 
 
+@app.command("calibration-study")
+def calibration_study(
+    results_dir: Annotated[Path | None, typer.Option(help="Benchmark results")] = None,
+    methods: Annotated[list[str] | None, typer.Option("--method", help="Repeatable")] = None,
+    trials: int = 500,
+    out_dir: Annotated[Path, typer.Option()] = Path("results"),
+    assets_dir: Annotated[Path, typer.Option(help="Where to write the chart")] = Path(
+        "docs/assets"
+    ),
+    charts: Annotated[bool, typer.Option(help="Also render the chart (needs matplotlib)")] = True,
+) -> None:
+    """How many golden samples a threshold needs: re-thresholds benchmark scores, no model runs."""
+    from vlm_inspect.eval import calibration_study as cs
+
+    root = results_dir or get_settings().results_dir
+    chosen = methods or [m for m in ("yolo", "qwen-zero", "qwen-oneshot") if (root / m).is_dir()]
+    study = cs.run_study(root, chosen, trials=trials)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "calibration-study.json").write_text(
+        json.dumps(study, indent=2) + "\n", encoding="utf-8"
+    )
+    markdown = cs.render_markdown(study)
+    (out_dir / "calibration-study.md").write_text(markdown, encoding="utf-8")
+    typer.echo(markdown)
+    if charts:
+        from vlm_inspect.eval.plots import calibration_curves
+
+        for path in calibration_curves(study, assets_dir / "calibration_study"):
+            typer.echo(f"wrote {path}")
+
+
 @app.command("serve")
 def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
     """Runs the inspection API (settings from VLM_INSPECT_* environment variables)."""
