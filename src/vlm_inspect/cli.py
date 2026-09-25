@@ -1,8 +1,9 @@
-"""Command-line entry point: `vlm-inspect data-prepare | train-yolo | eval`."""
+"""Command-line entry point: `vlm-inspect data-prepare | train-yolo | eval | report | serve ...`."""
 
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -14,6 +15,17 @@ from vlm_inspect.data import visa
 app = typer.Typer(
     add_completion=False, help="Industrial visual inspection: VLMs vs a trained detector."
 )
+
+
+@app.callback()
+def _setup() -> None:
+    """Industrial visual inspection: VLMs vs a trained detector."""
+    # Reports contain characters such as "≥"; legacy Windows consoles (cp1252) cannot encode them.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
 
 CategoriesOpt = Annotated[
     list[str] | None, typer.Option("--category", "-c", help="VisA category (repeatable)")
@@ -172,6 +184,62 @@ def evaluate(
             for k in ("images", "image_metrics", "localization", "pointing", "latency")
         }
         typer.echo(json.dumps({"category": category, **report}, indent=2))
+
+
+@app.command("report-eval")
+def report_eval(
+    method: Annotated[
+        str, typer.Option(help="Benchmark method whose findings are reported")
+    ] = "qwen-zero",
+    results_dir: Annotated[Path | None, typer.Option(help="Benchmark results")] = None,
+    data_dir: Annotated[Path | None, typer.Option()] = None,
+    per_part: Annotated[int, typer.Option(help="Detected defects sampled per part")] = 10,
+    llm: Annotated[
+        bool, typer.Option(help="Also run the LLM report writer (loads Qwen3-VL)")
+    ] = True,
+    embedder: Annotated[str, typer.Option(help="minilm | hashing")] = "minilm",
+    out_dir: Annotated[Path, typer.Option()] = Path("results/report-eval"),
+) -> None:
+    """Scores rule-based and LLM reports on real benchmark findings against VisA ground truth."""
+    from vlm_inspect.eval import report_quality as rq
+    from vlm_inspect.rag.embed import create_embedder
+    from vlm_inspect.rag.report import LLMReporter, RuleReporter
+    from vlm_inspect.rag.retrieve import ClauseIndex
+    from vlm_inspect.rag.specs import load_specs
+
+    settings = get_settings()
+    results = results_dir or settings.results_dir
+    clauses = load_specs(settings.spec_dir)
+    index = ClauseIndex(clauses, create_embedder(embedder))
+    general = {c.part: c for c in clauses if c.verdict is None}
+    rules = RuleReporter(index, general)
+    llm_writer = None
+    if llm:
+        from vlm_inspect.inspectors.qwen_vl import QwenVLInspector
+
+        model = QwenVLInspector(settings.vlm_model_id)
+        llm_writer = LLMReporter(index, general, lambda prompt: model.generate_text(prompt, 200))
+
+    rows = rq.load_rows(results, method)
+    cases = rq.select_cases(rows, per_part)
+    parts = sorted({r["category"] for r in rows})
+    paths = _paths(data_dir or settings.data_dir)
+    root = visa.find_visa_root(paths["extract"], parts[0])
+    label_map = json.loads((settings.spec_dir / "visa_label_map.json").read_text(encoding="utf-8"))
+    evaluation = rq.evaluate(
+        cases,
+        rq.load_ground_truth(root, parts),
+        label_map,
+        clauses,
+        rules=rules,
+        llm=llm_writer,
+        thresholds=rq.load_thresholds(results, method),
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / f"{method}.json").write_text(
+        json.dumps(evaluation, indent=2) + "\n", encoding="utf-8"
+    )
+    typer.echo(json.dumps(evaluation["summary"], indent=2))
 
 
 @app.command("serve")

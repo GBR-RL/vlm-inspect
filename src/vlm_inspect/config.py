@@ -17,10 +17,12 @@ class Settings(BaseSettings):
     # Vision-language model
     vlm_model_id: str = "Qwen/Qwen3-VL-2B-Instruct"
     # Longest image side fed to the VLM. Visual tokens grow with the square of this, and so does
-    # CPU latency; small defects vanish if it is too low. Measured trade-off in DESIGN_NOTES.
+    # CPU latency; small defects vanish if it is too low.
     vlm_max_side: int = 768
     vlm_threshold: float = 0.5
     vlm_max_new_tokens: int = 160
+    # "v1": simplified defect lists (first benchmark); "v2": VisA's exact taxonomy (parts.py)
+    vlm_prompt_version: str = "v1"
 
     # Inspection service
     database_url: str = "sqlite:///./vlm_inspect.db"

@@ -1,0 +1,67 @@
+name: Experiments
+
+# Follow-up experiments on the findings of a finished Benchmark run.
+#   report-quality: rule-based vs LLM-written reports on the VLM's real detections, scored against
+#                   VisA's ground-truth defect classes (see src/vlm_inspect/eval/report_quality.py)
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark_run_id:
+        description: "Run ID of the Benchmark workflow whose findings are used"
+        required: true
+      per_part:
+        description: "Detected defects sampled per part"
+        default: "10"
+
+permissions:
+  contents: read
+  actions: read  # download artifacts of another workflow run
+
+env:
+  HF_HOME: ${{ github.workspace }}/.hf_cache
+  HF_HUB_DISABLE_PROGRESS_BARS: "1"
+  TRANSFORMERS_VERBOSITY: error
+  VLM_INSPECT_DATA_DIR: data
+
+jobs:
+  report-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [qwen-zero, qwen-oneshot]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          extras: vlm,rag
+          model-cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-${{ matrix.method }}-*
+          path: results/
+          merge-multiple: true
+          run-id: ${{ inputs.benchmark_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: calibration-${{ matrix.method }}-*
+          path: results/
+          merge-multiple: true
+          run-id: ${{ inputs.benchmark_run_id }}
+          github-token: ${{ github.token }}
+      - name: Prepare data (ground-truth defect classes)
+        run: vlm-inspect data-prepare --no-yolo
+      - name: Score rule-based and LLM reports
+        run: >
+          vlm-inspect report-eval --method ${{ matrix.method }} --results-dir results
+          --per-part ${{ inputs.per_part }} --out-dir results/report-eval
+      - run: cat results/report-eval/${{ matrix.method }}.json | python -c "import json,sys; print(json.dumps(json.load(sys.stdin)['summary'], indent=2))" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-quality-${{ matrix.method }}
+          path: results/report-eval/
+          retention-days: 90

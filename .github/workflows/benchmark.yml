@@ -20,8 +20,19 @@ on:
       yolo_imgsz:
         description: "YOLO training/inference image size (768 = what the VLM sees)"
         default: "768"
+      prompt_version:
+        description: "VLM prompt version: v1 (simplified defect lists) or v2 (VisA taxonomy)"
+        default: "v1"
+      categories:
+        description: "Parts to evaluate (JSON list)"
+        default: '["pcb1", "candle", "capsules"]'
+      run_yolo:
+        description: "Train and evaluate YOLO and run the same-machine latency job"
+        type: boolean
+        default: true
 
 env:
+  VLM_INSPECT_VLM_PROMPT_VERSION: ${{ inputs.prompt_version }}
   HF_HOME: ${{ github.workspace }}/.hf_cache
   HF_HUB_DISABLE_PROGRESS_BARS: "1"
   TRANSFORMERS_VERBOSITY: error
@@ -33,6 +44,7 @@ env:
 
 jobs:
   yolo-weights:
+    if: inputs.run_yolo
     runs-on: ubuntu-24.04
     timeout-minutes: 340
     steps:
@@ -63,7 +75,7 @@ jobs:
       fail-fast: false
       matrix:
         method: [qwen-zero, qwen-oneshot]
-        category: [pcb1, candle, capsules]
+        category: ${{ fromJSON(inputs.categories) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -86,7 +98,7 @@ jobs:
       fail-fast: false
       matrix:
         method: [qwen-zero, qwen-oneshot]
-        category: [pcb1, candle, capsules]
+        category: ${{ fromJSON(inputs.categories) }}
         shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v4
@@ -112,12 +124,13 @@ jobs:
 
   eval-yolo:
     needs: yolo-weights
+    if: inputs.run_yolo
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        category: [pcb1, candle, capsules]
+        category: ${{ fromJSON(inputs.categories) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -138,6 +151,7 @@ jobs:
 
   latency:
     needs: [yolo-weights, calibrate]
+    if: inputs.run_yolo
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:

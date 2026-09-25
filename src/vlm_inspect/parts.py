@@ -46,9 +46,42 @@ PARTS: dict[str, PartSpec] = {
 }
 
 
-def get_part(name: str) -> PartSpec:
+# Prompt v2: descriptions and defect lists aligned with VisA's own annotation taxonomy
+# (<part>/image_anno.csv). v1 above is what the first benchmark used; it simplified the candle
+# ("round white wax candles", no mention of the aluminium cups, although "damaged corner of
+# packaging" is the most frequent candle defect) and omitted the capsule "leak" class. pcb1's v1
+# list already matched the taxonomy, so it is unchanged.
+PARTS_V2: dict[str, PartSpec] = {
+    "pcb1": PARTS["pcb1"],
+    "candle": PartSpec(
+        name="candle",
+        description="four tea-light candles in round aluminium cups, seen from above",
+        defect_types=(
+            "damaged corner of packaging (the aluminium cup)",
+            "chunk of wax missing",
+            "extra wax in candle",
+            "wax melded out of the candle",
+            "different colour spot",
+            "foreign particles on candle",
+            "weird candle wick",
+        ),
+    ),
+    "capsules": PartSpec(
+        name="capsules",
+        description="about twenty green translucent soft-gel capsules lying on a grey surface",
+        defect_types=("bubble", "discoloration", "scratch", "leak", "misshapen capsule"),
+    ),
+}
+
+PROMPT_VERSIONS: dict[str, dict[str, PartSpec]] = {"v1": PARTS, "v2": PARTS_V2}
+
+
+def get_part(name: str, version: str = "v1") -> PartSpec:
+    catalogue = PROMPT_VERSIONS.get(version)
+    if catalogue is None:
+        raise KeyError(f"unknown prompt version '{version}' (known: {', '.join(PROMPT_VERSIONS)})")
     try:
-        return PARTS[name]
+        return catalogue[name]
     except KeyError:
-        known = ", ".join(sorted(PARTS))
+        known = ", ".join(sorted(catalogue))
         raise KeyError(f"unknown part '{name}' (known: {known})") from None
