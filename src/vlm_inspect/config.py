@@ -21,8 +21,9 @@ class Settings(BaseSettings):
     vlm_max_side: int = 768
     vlm_threshold: float = 0.5
     vlm_max_new_tokens: int = 160
-    # "v1": simplified defect lists (first benchmark); "v2": VisA's exact taxonomy (parts.py)
-    vlm_prompt_version: str = "v1"
+    # "v2": VisA's exact defect taxonomy (parts.py) - same detection as v1, and reports cite the
+    # right clause about twice as often on candles. "v1": simplified lists of the first benchmark.
+    vlm_prompt_version: str = "v2"
 
     # Inspection service
     database_url: str = "sqlite:///./vlm_inspect.db"

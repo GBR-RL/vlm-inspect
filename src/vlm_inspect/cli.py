@@ -273,6 +273,56 @@ def calibration_study(
             typer.echo(f"wrote {path}")
 
 
+@app.command("gallery")
+def gallery(
+    method: Annotated[str, typer.Option(help="Benchmark method to show")] = "qwen-zero",
+    results_dir: Annotated[Path | None, typer.Option(help="Benchmark results")] = None,
+    data_dir: Annotated[Path | None, typer.Option()] = None,
+    report_eval: Annotated[
+        Path | None, typer.Option(help="report-eval JSON, adds the wrong-defect-type row")
+    ] = None,
+    per_mode: Annotated[int, typer.Option(help="Examples per failure mode")] = 3,
+    out: Annotated[Path, typer.Option()] = Path("docs/assets/vlm_failures.jpg"),
+) -> None:
+    """Draws the method's failure modes on the VisA images, with cases chosen by fixed rules."""
+    from PIL import Image
+
+    from vlm_inspect.eval import gallery as g
+    from vlm_inspect.eval import report_quality as rq
+    from vlm_inspect.eval.report import display_name
+
+    settings = get_settings()
+    results = results_dir or settings.results_dir
+    paths = _paths(data_dir or settings.data_dir)
+    rows = rq.load_rows(results, method)
+    parts = sorted({r["category"] for r in rows})
+    root = visa.find_visa_root(paths["extract"], parts[0])
+
+    def image_size(image: str) -> tuple[int, int]:
+        with Image.open(root / image) as img:
+            return img.size
+
+    chosen = g.select(
+        rows,
+        rq.load_thresholds(results, method),
+        per_mode=per_mode,
+        image_size=image_size,
+        ungrounded=g.load_ungrounded(report_eval) if report_eval else None,
+    )
+    samples = {s.image: s for s in visa.load_protocol(paths["protocol"])}
+    title = f"How {display_name(method)} fails on held-out VisA images"
+    path = g.render(
+        chosen,
+        root,
+        samples=samples,
+        true_labels=rq.load_ground_truth(root, parts),
+        out=out,
+        title=title,
+    )
+    typer.echo(json.dumps({m: [r["image"] for r in v] for m, v in chosen.items()}, indent=2))
+    typer.echo(f"wrote {path}")
+
+
 @app.command("smoke-test")
 def smoke_test(
     url: Annotated[str, typer.Option(help="Base URL of a running service")] = (

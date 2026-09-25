@@ -16,7 +16,12 @@ VLM (**Qwen3-VL-2B**, zero-shot and one-shot) is compared with a **YOLO detector
 labelled defects**, on the same held-out industrial images, together with the latency each costs
 on a CPU. Around the models sits the engineering that production needs: an inspection API with
 PostgreSQL, calibrated operating points, reports grounded in inspection specifications (RAG over
-pgvector), containers and CI.
+pgvector), containers, Kubernetes and CI.
+
+![Demo: a candle image is inspected by Qwen3-VL zero-shot, which boxes a colour spot and writes a report citing clause CND-COL-01; then a PCB is inspected by YOLO](docs/assets/demo.gif)
+
+<sub>The demo page served by the API at `/`, running the real models on a laptop CPU (VisA images,
+CC BY 4.0). Frames while the VLM runs are skipped; the counter and latency show real time.</sub>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/auroc_by_part-dark.png">
@@ -69,31 +74,42 @@ means a predicted box overlaps a ground-truth defect with IoU ≥ 0.1. Per-part 
    about 1-3 parts per minute, so it cannot run inline on a fast line.
 
 The one-shot result was not tuned: prompts, the 768-px input size and the calibration rule were
-fixed before the run. The prompts also use a simplified defect list rather than VisA's exact
-taxonomy; aligning them is a planned follow-up experiment ([plan](docs/IMPLEMENTATION_PLAN.md)).
+fixed before the run. The prompts also used a simplified defect list rather than VisA's exact
+taxonomy; the follow-up below measures what aligning them changes.
 
-### Follow-up: how many golden samples does a threshold need?
+## Follow-up experiments
 
-The benchmark sets each threshold from 20 defect-free images. `vlm-inspect calibration-study`
-re-thresholds the scores the benchmark already produced (no model runs): it draws N good parts at
-random for calibration, measures false alarms on the good parts not drawn and recall on all
-defects, and repeats that 500 times per part.
+Details, tables and commands: [docs/experiments.md](docs/experiments.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/calibration_study-dark.png">
   <img alt="Two panels against the number of golden samples N (5, 10, 20, 40). Left: false alarms fall from about 16 % to 2.4 % and every method sits on the 1/(N+1) theory curve. Right: YOLO catches 87 % to 75 % of defects, both VLM variants fall from about 70 % to 45-49 %" src="docs/assets/calibration_study-light.png">
 </picture>
 
-- **The false-alarm rate is set by N alone.** With "highest golden score" as the threshold, a new
-  good part scores higher with probability 1/(N+1), whatever the model. All three methods sit on
-  that curve: 16 % at N = 5, 9 % at 10, 5 % at 20, 2.4 % at 40. N is the knob for false alarms.
-- **The model decides what that costs in recall.** Going from 5 to 40 golden samples costs YOLO
-  12 points of recall and the VLM 21-29 points, because the VLM gives many good parts
-  defect-like scores.
-- **The VLM operating point is fragile.** At N = 20, the recall of one-shot on candles is
-  83 ± 14 % across draws, and on PCBs 22 ± 14 %. The single benchmark draw (41 %) is one sample
-  from that spread. A fitted threshold (mean + 2 sd of the logit) steadies it slightly (one-shot
-  60 % at 5.3 % false alarms) but costs YOLO 17 points, so it is not a general fix.
+- **Golden samples set the false-alarm rate; the model sets its cost.** Thresholding at the
+  highest of N golden scores gives a 1/(N+1) false-alarm rate for every model (16 % at N = 5,
+  5 % at 20, 2.4 % at 40). Going from 5 to 40 samples costs YOLO 12 points of recall and the VLM
+  21-29. The VLM's operating point also varies across golden draws: one-shot candle recall is
+  83 ± 14 % at N = 20.
+- **Exact defect names fix the reports, not the detection.** Prompting with VisA's own defect
+  classes (prompt v2) leaves AUROC and recall unchanged (within 0.02 and 2 points). It doubles
+  the share of candle reports that cite the right clause, from 18 % to 39-42 %. Under v1 that
+  share was at chance level (19 %): the VLM found candle defects but named them wrongly. The
+  service now uses v2.
+- **An LLM report writer does not fix wrong names.** On 59 real findings, Qwen3-VL as the report
+  writer cited the right clause as often as the rule-based writer (50-55 %, near the 44-49 %
+  chance level), because both only see clauses retrieved for the VLM's own labels. It chose the
+  prescribed verdict more often on one-shot findings (90 % vs 72 %, n = 29), costs 40 s per
+  report, and 3 of its 59 outputs were rejected by validation.
+
+### Where the VLM fails
+
+![Failure gallery of Qwen3-VL zero-shot on held-out VisA images: missed small defects, boxes on the wrong capsule or on PCB pins, false alarms on good PCBs, and correctly boxed defects given the wrong name](docs/assets/vlm_failures.jpg)
+
+Cases are chosen by fixed rules, not by hand (`vlm-inspect gallery`). Blue boxes are ground truth
+and orange boxes are the VLM's. Small PCB defects are missed or boxed at the pins. All 8 zero-shot
+false alarms at the calibrated threshold are good PCBs, 5 of them flagged as a "bent component",
+usually at the header pins.
 
 ## Inspection service
 
@@ -106,7 +122,9 @@ docker compose up --build            # API + PostgreSQL (pgvector); open http://
 | `POST /inspect` | image + part + method → defect verdict, score, calibrated threshold, boxes; stored in PostgreSQL |
 | `POST /inspections/{id}/report` | report grounded in the part's inspection specification (RAG) |
 | `GET /inspections`, `GET /inspections/{id}[/report]` | history, filterable by part and result |
-| `GET /parts`, `GET /health`, `GET /ready`, `GET /metrics` | catalogue, liveness, readiness (503 without a database), Prometheus metrics |
+| `GET /` | demo page: upload, boxes, calibrated score, grounded report, history |
+| `GET /parts`, `GET /parts/{part}/spec` | catalogue, and the clauses that reports cite |
+| `GET /health`, `GET /ready`, `GET /metrics` | liveness, readiness (503 without a database), Prometheus metrics |
 
 - **Calibrated operating points:** the service loads the benchmark's golden-sample thresholds per
   method and part, so it flags parts at exactly the operating point that was evaluated.
@@ -151,9 +169,10 @@ with the reason stored. A report can never cite a clause that does not exist.
 
 ## Engineering
 
-- **CI on every push:** Ruff, strict mypy and 62 tests on Python 3.11 and 3.12, the API and
-  migrations against a real PostgreSQL service, and a Docker Compose smoke test that inspects an
-  image through the running stack.
+- **CI on every push:** Ruff, strict mypy and 80 tests on Python 3.11 and 3.12, the API and
+  migrations against a real PostgreSQL service, a Docker Compose smoke test, and a Helm install on
+  a `kind` cluster with `helm test`. Both smoke tests run the same end-to-end check through the
+  service: inspect, read back, grounded report, metrics, demo page.
 - **Benchmark workflow:** golden-sample calibration → 18 parallel VLM shards (each resumable) →
   YOLO trained in CI → same-machine latency job → merged report and charts. It runs on free
   runners in about 3 hours.
@@ -185,11 +204,12 @@ vlm-inspect report                                    # tables + charts from res
 | `data/specs/`, `data/protocol.jsonl` | inspection specifications, retrieval eval set, the exact image split |
 | `migrations/`, `Dockerfile`, `compose.yaml` | Alembic migrations, container images, local stack |
 | `deploy/helm/vlm-inspect/` | Helm chart (API, PostgreSQL + pgvector, model cache, `helm test`) |
-| `docs/` | [plan](docs/IMPLEMENTATION_PLAN.md), [protocol](docs/EVAL_PROTOCOL.md), [benchmark report](docs/benchmark_report.md) |
+| `docs/` | [plan](docs/IMPLEMENTATION_PLAN.md), [protocol](docs/EVAL_PROTOCOL.md), [benchmark report](docs/benchmark_report.md), [follow-up experiments](docs/experiments.md) |
 
 ## Data and licences
 
 VisA: Amazon, [CC BY 4.0](https://registry.opendata.aws/visa/) (Zou et al., *SPot-the-Difference
 Self-Supervised Pre-training for Anomaly Detection and Segmentation*, ECCV 2022). Qwen3-VL: Apache
 2.0. all-MiniLM-L6-v2: Apache 2.0. Ultralytics YOLO: AGPL-3.0. Data and weights are downloaded at
-run time and never committed. Code in this repository: MIT.
+run time and never committed; the demo GIF and failure gallery show resized, annotated VisA images
+under CC BY 4.0. Code in this repository: MIT.

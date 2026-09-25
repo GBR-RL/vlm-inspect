@@ -16,7 +16,7 @@ replicaCount: 1
 
 inspection:
   methods: ["stub"]          # first entry is the default; stub | yolo | qwen-zero | qwen-oneshot
-  promptVersion: v1          # v1 (simplified defect lists) or v2 (VisA taxonomy)
+  promptVersion: v2          # v2 (VisA taxonomy, better-grounded reports) or v1 (benchmark)
   reportWriter: rules        # rules, or llm (needs a qwen method)
   ragEmbedder: hashing       # hashing, or minilm (downloads a 90 MB model into the cache)
   maxUploadBytes: 26214400

@@ -55,7 +55,7 @@ from vlm_inspect.api.schemas import (
 from vlm_inspect.api.spec_index import build_retriever
 from vlm_inspect.config import Settings, get_settings
 from vlm_inspect.inspectors.base import Inspector, create_inspector
-from vlm_inspect.parts import PARTS
+from vlm_inspect.parts import PARTS, get_part
 from vlm_inspect.rag.embed import create_embedder
 from vlm_inspect.rag.report import LLMReporter, RuleReporter
 from vlm_inspect.rag.specs import load_specs
@@ -291,10 +291,12 @@ def ready(session: SessionDep, pool: PoolDep, response: Response) -> HealthOut:
 
 
 @router.get("/parts", response_model=list[PartOut])
-def parts() -> list[PartOut]:
+def parts(settings: SettingsDep) -> list[PartOut]:
+    """The parts catalogue, with the defect names the VLM is prompted with."""
+    specs = [get_part(name, settings.vlm_prompt_version) for name in PARTS]
     return [
         PartOut(name=p.name, description=p.description, defect_types=list(p.defect_types))
-        for p in PARTS.values()
+        for p in specs
     ]
 
 

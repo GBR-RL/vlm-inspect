@@ -87,8 +87,11 @@ Methods compared:
   0.876, one-shot 0.920; the VLM beats YOLO on candles (0.98 vs 0.92) with no defect labels;
   recall at ≤ 3 % false alarms 73 % / 51 % / 41 %; box on defect 71 % / 28 % / 23 %; latency
   0.07 s / 18 s / 35 s
-- ⬜ Failure gallery (VLM boxes vs ground truth) in the README
-- ⬜ Prompt v2 aligned with VisA's exact defect taxonomy (the run used a simplified list)
+- ✅ Failure gallery (`vlm-inspect gallery`): cases chosen by fixed rules per failure mode
+  (missed, box off the defect, false alarm, wrong defect name), drawn on the VisA images
+- ✅ Prompt v2 with VisA's exact defect classes (candle, capsules; run 36144593848): detection
+  unchanged (AUROC ±0.02), candle reports citing the right clause 18 → 39-42 % (chance ~20 %);
+  v1 naming was at chance level. Service default is now v2
 - ✅ Calibration study (`vlm-inspect calibration-study`, no model runs): with the max-of-N rule
   the false-alarm rate follows 1/(N+1) for every model (16 / 9 / 5 / 2.4 % at N = 5 / 10 / 20 / 40);
   N = 5 → 40 costs YOLO 12 points of recall and the VLM 21-29; per-part VLM recall at N = 20
@@ -111,8 +114,10 @@ Methods compared:
   retrieved set, and reports citing unknown clauses are rejected
 - Evaluation: clause retrieval on 36 labelled queries: recall@1/@3 lexical 0.78/0.92, MiniLM
   0.89/0.97 (fusion measured, no gain)
-- ⬜ LLM report quality on the benchmark's real VLM findings: citation validity and agreement
-  with the rule-based verdict
+- ✅ Report quality on real findings (run 36144598218, 59 reports, scored against VisA classes
+  with a chance baseline): LLM and rule writers ground equally (50-55 %, chance 44-49 %); the LLM
+  gets the prescribed verdict more often on one-shot findings (90 vs 72 %), 90-100 % valid output,
+  40 s per report. The VLM's defect naming, not the writer, limits grounding
 
 ## M5 - Kubernetes deployment ✅
 
@@ -127,16 +132,19 @@ Methods compared:
 - Managed Kubernetes (EKS / AKS / GKE) takes the same chart with `postgresql.enabled=false` and
   `externalDatabase.existingSecret`; nothing is deployed to a billed cluster
 
-## M6 - Showcase ⬜
+## M6 - Showcase ✅
 
-- Minimal web page to upload an image and see boxes + report
-- Demo GIF, short write-up of the findings, CV bullet
+- Demo page served by the API at `/` (single file, no external assets, works offline in a
+  cluster): upload, boxes, calibrated score vs threshold, report with clause titles, history
+- Demo GIF recorded from the page with the real models (headless Chrome screenshots)
+- Failure gallery and follow-up write-up in [experiments.md](experiments.md); CV bullet below
 
 ## CV bullet
 
 > Built **vlm-inspect**, an industrial inspection service comparing an open-weight VLM
 > (Qwen3-VL-2B, zero/one-shot) with a trained YOLO detector on VisA: 0.92 AUROC with no defect
 > labels (beating YOLO on one part, 0.98 vs 0.92) vs 0.95 for YOLO trained on 40 defects per part,
-> at 250-500× the CPU latency. Shipped as FastAPI + PostgreSQL/pgvector with calibrated operating
-> points and RAG-grounded, citation-validated reports; Docker, Alembic, CI incl. PostgreSQL and
-> container smoke tests.
+> at 250-500× the CPU latency; showed that golden-sample thresholds give a 1/(N+1) false-alarm
+> rate for any model and that exact defect names double report grounding. Shipped as FastAPI +
+> PostgreSQL/pgvector with calibrated operating points and RAG-grounded, citation-validated
+> reports; Docker, Alembic, a Helm chart tested on kind in CI.

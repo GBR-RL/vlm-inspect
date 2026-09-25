@@ -76,7 +76,7 @@ class QwenVLInspector:
         max_new_tokens: int = 160,
         references: dict[str, Path] | None = None,
         dtype: str = "float32",
-        prompt_version: str = "v1",
+        prompt_version: str = "v2",
         localize: bool = True,
     ) -> None:
         import torch
