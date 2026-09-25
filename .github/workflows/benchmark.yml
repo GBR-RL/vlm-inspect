@@ -18,8 +18,8 @@ on:
         description: "YOLO epochs when training in CI"
         default: "30"
       yolo_imgsz:
-        description: "YOLO training/inference image size"
-        default: "640"
+        description: "YOLO training/inference image size (768 = what the VLM sees)"
+        default: "768"
 
 env:
   HF_HOME: ${{ github.workspace }}/.hf_cache
