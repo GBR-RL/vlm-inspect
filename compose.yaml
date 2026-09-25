@@ -1,0 +1,43 @@
+# Local stack: the inspection API + PostgreSQL (with pgvector, used by the RAG milestone).
+#
+#   docker compose up --build                       # slim image, stub inspector
+#   API_TARGET=full API_METHODS='["qwen-zero","yolo"]' docker compose up --build
+#
+# Then open http://localhost:8000/docs.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: vlm
+      POSTGRES_PASSWORD: vlm
+      POSTGRES_DB: vlm_inspect
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vlm -d vlm_inspect"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      target: ${API_TARGET:-api}
+    environment:
+      VLM_INSPECT_DATABASE_URL: postgresql+psycopg://vlm:vlm@db:5432/vlm_inspect
+      VLM_INSPECT_API_METHODS: ${API_METHODS:-["stub"]}
+      # Calibrated operating thresholds from the benchmark, if present.
+      VLM_INSPECT_CALIBRATION_DIR: /app/results
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./results:/app/results:ro
+      - hf-cache:/models/hf
+
+volumes:
+  pgdata:
+  hf-cache:

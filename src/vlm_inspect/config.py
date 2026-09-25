@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     vlm_threshold: float = 0.5
     vlm_max_new_tokens: int = 160
 
+    # Inspection service
+    database_url: str = "sqlite:///./vlm_inspect.db"
+    db_auto_create: bool = False  # create tables at startup (tests/dev); production uses Alembic
+    api_methods: list[str] = ["stub"]  # first entry is the default method
+    calibration_dir: Path = Path("results")  # <method>/<part>/calibration.json from the benchmark
+    max_upload_bytes: int = 25 * 1024 * 1024
+
     # Trained detector
     yolo_weights: Path = Path("models/yolo/best.pt")
     yolo_imgsz: int = 1024

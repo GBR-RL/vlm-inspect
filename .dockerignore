@@ -1,0 +1,15 @@
+.git
+.venv
+.hf_cache
+data
+results
+models
+runs
+mlruns
+*.pt
+*.onnx
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache
+*.db
