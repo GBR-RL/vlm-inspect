@@ -11,8 +11,18 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    create_engine,
+    event,
+    text as sql_text,
+)
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -27,6 +37,13 @@ from vlm_inspect.rag.embed import EMBEDDING_DIM
 
 class Base(DeclarativeBase):
     pass
+
+
+@event.listens_for(Base.metadata, "before_create")
+def _enable_pgvector(_target: Any, connection: Connection, **_: Any) -> None:
+    """The `vector` column type needs the pgvector extension, for create_all as for migrations."""
+    if connection.dialect.name == "postgresql":
+        connection.execute(sql_text("CREATE EXTENSION IF NOT EXISTS vector"))
 
 
 def _now() -> datetime:
