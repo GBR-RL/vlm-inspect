@@ -1,0 +1,202 @@
+name: Benchmark
+
+# Accuracy: every method x category, VLM evaluation split into parallel shards that share one
+# golden-sample calibration. Latency: every method timed in ONE job, because GitHub assigns
+# different CPU models to different jobs and latency is only comparable on one machine.
+# Everything runs on free GitHub-hosted runners (public repository).
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Evaluate only the first N images per shard (empty = full run)"
+        default: ""
+      yolo_weights_url:
+        description: "Download trained YOLO weights from this URL instead of training in CI"
+        default: ""
+      yolo_epochs:
+        description: "YOLO epochs when training in CI"
+        default: "30"
+      yolo_imgsz:
+        description: "YOLO training/inference image size"
+        default: "640"
+
+env:
+  HF_HOME: ${{ github.workspace }}/.hf_cache
+  HF_HUB_DISABLE_PROGRESS_BARS: "1"
+  TRANSFORMERS_VERBOSITY: error
+  VLM_INSPECT_DATA_DIR: data
+  VLM_INSPECT_RESULTS_DIR: results
+  VLM_INSPECT_YOLO_WEIGHTS: models/yolo/weights/best.pt
+  VLM_INSPECT_YOLO_IMGSZ: ${{ inputs.yolo_imgsz }}
+  LIMIT_ARG: ${{ inputs.limit && format('--limit {0}', inputs.limit) || '' }}
+
+jobs:
+  yolo-weights:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          extras: yolo
+      - name: Download released weights
+        if: inputs.yolo_weights_url != ''
+        run: |
+          mkdir -p models/yolo/weights
+          curl -sSfL -o models/yolo/weights/best.pt "${{ inputs.yolo_weights_url }}"
+      - name: Train
+        if: inputs.yolo_weights_url == ''
+        run: |
+          vlm-inspect data-prepare
+          vlm-inspect train-yolo --epochs ${{ inputs.yolo_epochs }} --imgsz ${{ inputs.yolo_imgsz }} --batch 8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yolo-weights
+          path: models/yolo/
+          retention-days: 30
+
+  calibrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [qwen-zero, qwen-oneshot]
+        category: [pcb1, candle, capsules]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          extras: vlm
+          model-cache: true
+      - run: vlm-inspect data-prepare --no-yolo -c ${{ matrix.category }}
+      - run: vlm-inspect eval --method ${{ matrix.method }} -c ${{ matrix.category }} --calibrate-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: calibration-${{ matrix.method }}-${{ matrix.category }}
+          path: results/
+          retention-days: 30
+
+  eval-vlm:
+    needs: calibrate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [qwen-zero, qwen-oneshot]
+        category: [pcb1, candle, capsules]
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          extras: vlm
+          model-cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: calibration-${{ matrix.method }}-${{ matrix.category }}
+          path: results/
+      - run: vlm-inspect data-prepare --no-yolo -c ${{ matrix.category }}
+      - name: Evaluate shard
+        run: >
+          vlm-inspect eval --method ${{ matrix.method }} -c ${{ matrix.category }}
+          --shard ${{ matrix.shard }}/3 $LIMIT_ARG
+      - uses: actions/upload-artifact@v4
+        if: always()  # keep partial predictions; runs resume from them
+        with:
+          name: results-${{ matrix.method }}-${{ matrix.category }}-${{ matrix.shard }}
+          path: results/
+          retention-days: 30
+
+  eval-yolo:
+    needs: yolo-weights
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        category: [pcb1, candle, capsules]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          extras: yolo
+      - uses: actions/download-artifact@v4
+        with:
+          name: yolo-weights
+          path: models/yolo/
+      - run: vlm-inspect data-prepare --no-yolo -c ${{ matrix.category }}
+      - run: vlm-inspect eval --method yolo -c ${{ matrix.category }} $LIMIT_ARG
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-yolo-${{ matrix.category }}
+          path: results/
+          retention-days: 30
+
+  latency:
+    needs: [yolo-weights, calibrate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          extras: vlm,yolo
+          model-cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: yolo-weights
+          path: models/yolo/
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: calibration-*-pcb1
+          path: results/latency/
+          merge-multiple: true
+      - run: vlm-inspect data-prepare --no-yolo -c pcb1
+      - name: Time every method on the same 20 images, same machine
+        env:
+          VLM_INSPECT_RESULTS_DIR: results/latency
+        run: |
+          for method in yolo qwen-zero qwen-oneshot; do
+            vlm-inspect eval --method $method -c pcb1 --limit 20
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-latency
+          path: results/
+          retention-days: 30
+
+  report:
+    needs: [eval-vlm, eval-yolo, latency]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --quiet -e ".[plots]"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          path: results/
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: calibration-*
+          path: results/
+          merge-multiple: true
+      - run: vlm-inspect report --assets-dir results/charts
+      - run: cat results/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: |
+            results/report.md
+            results/report.json
+            results/charts/
+          retention-days: 90
