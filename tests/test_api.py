@@ -190,3 +190,17 @@ def test_smoke_test_passes_against_the_app(client, monkeypatch) -> None:
     result = smoke.run("http://service/")
     assert result["citations"]
     assert result["health"]["database"] == "ok"
+
+
+def test_demo_page_is_served(client) -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "vlm-inspect" in response.text
+
+
+def test_part_spec_lists_clauses(client) -> None:
+    clauses = {c["clause_id"]: c for c in client.get("/parts/candle/spec").json()}
+    assert clauses["CND-WAX-01"]["verdict"] == "REJECT"
+    assert clauses["CND-GEN-01"]["verdict"] is None
+    assert client.get("/parts/unknown/spec").status_code == 404

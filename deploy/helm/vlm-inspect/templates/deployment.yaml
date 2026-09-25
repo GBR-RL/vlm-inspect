@@ -85,7 +85,7 @@ spec:
             - name: VLM_INSPECT_RAG_EMBEDDER
               value: {{ .Values.inspection.ragEmbedder | quote }}
             - name: VLM_INSPECT_MAX_UPLOAD_BYTES
-              value: {{ .Values.inspection.maxUploadBytes | quote }}
+              value: {{ .Values.inspection.maxUploadBytes | int64 | quote }}
             - name: VLM_INSPECT_YOLO_WEIGHTS
               value: /models/yolo/best.pt
             - name: HF_HOME

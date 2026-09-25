@@ -30,7 +30,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from PIL import Image, UnidentifiedImageError
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -44,7 +44,14 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from vlm_inspect.api import db
-from vlm_inspect.api.schemas import FindingOut, HealthOut, InspectionOut, PartOut, ReportOut
+from vlm_inspect.api.schemas import (
+    ClauseOut,
+    FindingOut,
+    HealthOut,
+    InspectionOut,
+    PartOut,
+    ReportOut,
+)
 from vlm_inspect.api.spec_index import build_retriever
 from vlm_inspect.config import Settings, get_settings
 from vlm_inspect.inspectors.base import Inspector, create_inspector
@@ -55,6 +62,7 @@ from vlm_inspect.rag.specs import load_specs
 from vlm_inspect.types import Box, Finding, InspectionResult
 
 LATENCY_BUCKETS = (0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320)
+DEMO_PAGE = Path(__file__).with_name("static") / "index.html"
 
 
 class InspectorPool:
@@ -288,6 +296,24 @@ def parts() -> list[PartOut]:
         PartOut(name=p.name, description=p.description, defect_types=list(p.defect_types))
         for p in PARTS.values()
     ]
+
+
+@router.get("/parts/{part}/spec", response_model=list[ClauseOut])
+def part_spec(part: str, settings: SettingsDep) -> list[ClauseOut]:
+    """The part's inspection specification: the clauses that reports cite."""
+    clauses = [c for c in load_specs(settings.spec_dir) if c.part == part]
+    if not clauses:
+        raise HTTPException(404, f"no specification for part '{part}'")
+    return [
+        ClauseOut(clause_id=c.clause_id, title=c.title, text=c.text, verdict=c.verdict)
+        for c in clauses
+    ]
+
+
+@router.get("/", include_in_schema=False)
+def demo_page() -> HTMLResponse:
+    """A single-file demo page: upload an image, see the boxes, write the report."""
+    return HTMLResponse(DEMO_PAGE.read_text(encoding="utf-8"))
 
 
 @router.post("/inspect", response_model=InspectionOut)

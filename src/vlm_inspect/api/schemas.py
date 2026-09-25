@@ -44,6 +44,13 @@ class ReportOut(BaseModel):
     rejected_llm_output: str | None
 
 
+class ClauseOut(BaseModel):
+    clause_id: str
+    title: str
+    text: str
+    verdict: str | None
+
+
 class PartOut(BaseModel):
     name: str
     description: str
