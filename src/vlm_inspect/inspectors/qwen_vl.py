@@ -145,6 +145,23 @@ class QwenVLInspector:
         # ratio - so they map straight onto the original image.
         return parse_findings(text, width, height, score), text
 
+    def generate_text(self, prompt: str, max_new_tokens: int = 200) -> str:
+        """Text-only generation with the same weights (used to write grounded reports)."""
+        messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        inputs = self.processor.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+        with self._torch.inference_mode():
+            generated = self.model.generate(
+                **inputs, max_new_tokens=max_new_tokens, do_sample=False
+            )
+        new_tokens = generated[:, inputs["input_ids"].shape[1] :]
+        return str(self.processor.batch_decode(new_tokens, skip_special_tokens=True)[0])
+
     def inspect(self, image: Image.Image, part: str) -> InspectionResult:
         start = time.perf_counter()
         spec = get_part(part)

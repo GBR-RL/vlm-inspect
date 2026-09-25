@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     calibration_dir: Path = Path("results")  # <method>/<part>/calibration.json from the benchmark
     max_upload_bytes: int = 25 * 1024 * 1024
 
+    # Grounded reports
+    spec_dir: Path = Path("data/specs")
+    rag_embedder: str = "hashing"  # "minilm" for semantic retrieval (needs the [rag] extra)
+    # "rules", or "llm" to have the loaded Qwen model write reports (needs a qwen method enabled)
+    report_writer: str = "rules"
+
     # Trained detector
     yolo_weights: Path = Path("models/yolo/best.pt")
     yolo_imgsz: int = 1024

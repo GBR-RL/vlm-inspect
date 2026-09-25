@@ -12,7 +12,7 @@ import hashlib
 import io
 import json
 import threading
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,14 +40,19 @@ from prometheus_client import (
     generate_latest,
 )
 from sqlalchemy import select, text
-from sqlalchemy.orm import Session
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from vlm_inspect.api import db
-from vlm_inspect.api.schemas import FindingOut, HealthOut, InspectionOut, PartOut
+from vlm_inspect.api.schemas import FindingOut, HealthOut, InspectionOut, PartOut, ReportOut
+from vlm_inspect.api.spec_index import build_retriever
 from vlm_inspect.config import Settings, get_settings
 from vlm_inspect.inspectors.base import Inspector, create_inspector
 from vlm_inspect.parts import PARTS
-from vlm_inspect.types import Box, InspectionResult
+from vlm_inspect.rag.embed import create_embedder
+from vlm_inspect.rag.report import LLMReporter, RuleReporter
+from vlm_inspect.rag.specs import load_specs
+from vlm_inspect.types import Box, Finding, InspectionResult
 
 LATENCY_BUCKETS = (0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320)
 
@@ -111,6 +116,61 @@ class InspectorPool:
             inspector.threshold = self.threshold(method, part, default)
             return inspector.inspect(image, part), inspector.threshold
 
+    def text_generator(self) -> Callable[[str], str] | None:
+        """Text generation with an enabled Qwen model (shares its lock), or None."""
+        method = next((m for m in self.methods if m.startswith("qwen")), None)
+        if method is None:
+            return None
+        inspector, lock = self._get(method)
+        generate = getattr(inspector, "generate_text", None)
+        if generate is None:
+            return None
+
+        def locked_generate(prompt: str) -> str:
+            with lock:
+                return str(generate(prompt))
+
+        return locked_generate
+
+
+class ReportService:
+    """Builds the clause retriever on first use (after the schema exists) and writes reports."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        engine: Engine,
+        session_factory: sessionmaker[Session],
+        pool: InspectorPool,
+    ) -> None:
+        self.settings = settings
+        self.engine = engine
+        self.session_factory = session_factory
+        self.pool = pool
+        self._writer: RuleReporter | LLMReporter | None = None
+        self._lock = threading.Lock()
+
+    def writer(self) -> RuleReporter | LLMReporter:
+        with self._lock:
+            if self._writer is None:
+                clauses = load_specs(self.settings.spec_dir)
+                retriever = build_retriever(
+                    self.engine,
+                    self.session_factory,
+                    clauses,
+                    create_embedder(self.settings.rag_embedder),
+                )
+                general = {c.part: c for c in clauses if c.verdict is None}
+                generate = (
+                    self.pool.text_generator() if self.settings.report_writer == "llm" else None
+                )
+                self._writer = (
+                    LLMReporter(retriever, general, generate)
+                    if generate is not None
+                    else RuleReporter(retriever, general)
+                )
+            return self._writer
+
 
 class Metrics:
     def __init__(self) -> None:
@@ -152,7 +212,13 @@ def get_app_settings(request: Request) -> Settings:
     return settings
 
 
+def get_reports(request: Request) -> ReportService:
+    reports: ReportService = request.app.state.reports
+    return reports
+
+
 SessionDep = Annotated[Session, Depends(get_session)]
+ReportsDep = Annotated[ReportService, Depends(get_reports)]
 PoolDep = Annotated[InspectorPool, Depends(get_pool)]
 MetricsDep = Annotated[Metrics, Depends(get_metrics)]
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
@@ -283,6 +349,63 @@ def list_inspections(
     return [to_out(r) for r in session.scalars(query)]
 
 
+def report_out(report: db.Report) -> ReportOut:
+    return ReportOut(
+        inspection_id=report.inspection_id,
+        created_at=as_utc(report.created_at),
+        verdict=report.verdict,
+        summary=report.summary,
+        citations=report.citations,
+        retrieved=report.retrieved,
+        generator=report.generator,
+        rejected_llm_output=report.rejected_llm_output,
+    )
+
+
+@router.post("/inspections/{inspection_id}/report", response_model=ReportOut)
+async def create_report(inspection_id: int, session: SessionDep, reports: ReportsDep) -> ReportOut:
+    """Writes (or rewrites) the report for an inspection, grounded in the part's specification."""
+    record = session.get(db.Inspection, inspection_id)
+    if record is None:
+        raise HTTPException(404, "inspection not found")
+    findings = [
+        Finding(box=Box(x1=f.x1, y1=f.y1, x2=f.x2, y2=f.y2), label=f.label, score=f.score)
+        for f in record.findings
+    ]
+    writer = await run_in_threadpool(reports.writer)
+    report = await run_in_threadpool(
+        lambda: writer.write(
+            record.part,
+            is_defective=record.is_defective,
+            score=record.score,
+            threshold=record.threshold,
+            findings=findings,
+        )
+    )
+    existing = session.scalars(
+        select(db.Report).where(db.Report.inspection_id == inspection_id)
+    ).first()
+    row = existing or db.Report(inspection_id=inspection_id)
+    row.created_at = datetime.now(UTC)
+    row.verdict = report.verdict
+    row.summary = report.summary
+    row.citations = report.citations
+    row.retrieved = report.retrieved
+    row.generator = report.generator
+    row.rejected_llm_output = report.rejected_llm_output
+    session.add(row)
+    session.commit()
+    return report_out(row)
+
+
+@router.get("/inspections/{inspection_id}/report", response_model=ReportOut)
+def get_report(inspection_id: int, session: SessionDep) -> ReportOut:
+    row = session.scalars(select(db.Report).where(db.Report.inspection_id == inspection_id)).first()
+    if row is None:
+        raise HTTPException(404, "no report for this inspection; POST to create one")
+    return report_out(row)
+
+
 @router.get("/metrics", include_in_schema=False)
 def prometheus(metrics: MetricsDep) -> Response:
     return Response(generate_latest(metrics.registry), media_type=CONTENT_TYPE_LATEST)
@@ -314,5 +437,6 @@ def create_app(
     app.state.session_factory = db.make_session_factory(engine)
     app.state.pool = InspectorPool(settings, inspectors)
     app.state.metrics = Metrics()
+    app.state.reports = ReportService(settings, engine, app.state.session_factory, app.state.pool)
     app.include_router(router)
     return app

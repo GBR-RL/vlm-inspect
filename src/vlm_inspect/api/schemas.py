@@ -33,6 +33,17 @@ class InspectionOut(BaseModel):
     findings: list[FindingOut]
 
 
+class ReportOut(BaseModel):
+    inspection_id: int
+    created_at: datetime
+    verdict: str
+    summary: str
+    citations: list[str]
+    retrieved: list[str]
+    generator: str
+    rejected_llm_output: str | None
+
+
 class PartOut(BaseModel):
     name: str
     description: str
