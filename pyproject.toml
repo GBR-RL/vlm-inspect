@@ -58,7 +58,6 @@ ignore = ["PLR0913", "PLR2004", "PLC0415"]  # many-args APIs, magic numbers in m
 "src/vlm_inspect/cli.py" = ["PLR0917"]  # Typer maps parameters to CLI flags
 
 [tool.mypy]
-python_version = "3.11"
 strict = true
 ignore_missing_imports = true
 files = ["src/vlm_inspect"]
