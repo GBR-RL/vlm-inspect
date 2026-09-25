@@ -21,7 +21,7 @@ on:
         description: "YOLO training/inference image size (768 = what the VLM sees)"
         default: "768"
       prompt_version:
-        description: "VLM prompt version: v1 (simplified defect lists) or v2 (VisA taxonomy)"
+        description: "VLM prompt version: v1 (simplified defect lists, headline results) or v2 (VisA taxonomy, service default)"
         default: "v1"
       categories:
         description: "Parts to evaluate (JSON list)"

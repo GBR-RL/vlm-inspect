@@ -105,3 +105,12 @@ def test_prompt_v2_uses_the_visa_taxonomy() -> None:
     assert get_part("pcb1", "v2") == get_part("pcb1", "v1"), "pcb1 already matched the taxonomy"
     with pytest.raises(KeyError, match="prompt version"):
         get_part("pcb1", "v9")
+
+
+def test_chance_baseline() -> None:
+    from vlm_inspect.eval.report_quality import chance_grounded
+
+    assert chance_grounded(7, 1, 1) == pytest.approx(1 / 7)
+    assert chance_grounded(5, 5, 1) == 1.0  # every clause is a true one
+    assert chance_grounded(6, 2, 2) == pytest.approx(1 - 6 / 15)
+    assert chance_grounded(7, 1, 0) == pytest.approx(1 / 7)  # no citation counts as one guess
