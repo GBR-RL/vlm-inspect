@@ -20,6 +20,8 @@ from sqlalchemy import (
     Text,
     create_engine,
     event,
+)
+from sqlalchemy import (
     text as sql_text,
 )
 from sqlalchemy.engine import Connection, Engine
