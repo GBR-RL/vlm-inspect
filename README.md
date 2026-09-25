@@ -106,7 +106,7 @@ docker compose up --build            # API + PostgreSQL (pgvector); open http://
 | `POST /inspect` | image + part + method → defect verdict, score, calibrated threshold, boxes; stored in PostgreSQL |
 | `POST /inspections/{id}/report` | report grounded in the part's inspection specification (RAG) |
 | `GET /inspections`, `GET /inspections/{id}[/report]` | history, filterable by part and result |
-| `GET /parts`, `GET /health`, `GET /metrics` | catalogue, liveness + database check, Prometheus metrics |
+| `GET /parts`, `GET /health`, `GET /ready`, `GET /metrics` | catalogue, liveness, readiness (503 without a database), Prometheus metrics |
 
 - **Calibrated operating points:** the service loads the benchmark's golden-sample thresholds per
   method and part, so it flags parts at exactly the operating point that was evaluated.
@@ -116,6 +116,21 @@ docker compose up --build            # API + PostgreSQL (pgvector); open http://
   the result with the ORM models; it caught a `FLOAT` vs `DOUBLE PRECISION` drift on its first run.
 - **Images:** the slim `api` target runs the stub inspector (CI, demos); the `full` target adds
   CPU PyTorch, Qwen3-VL and YOLO.
+
+### Kubernetes
+
+```bash
+helm install vlm deploy/helm/vlm-inspect                     # stub inspector + bundled PostgreSQL
+helm install vlm deploy/helm/vlm-inspect -f deploy/helm/vlm-inspect/values-full.yaml   # real models
+helm test vlm --logs                                         # end-to-end check from inside the cluster
+```
+
+The [chart](deploy/helm/vlm-inspect) runs migrations in an init container, with a PostgreSQL
+advisory lock so replicas can start together. It has separate liveness (`/health`) and readiness
+(`/ready`) probes, keeps the model weights on a persistent volume, runs as non-root with a
+read-only root filesystem, and can use either a bundled pgvector StatefulSet or an external
+database. On every push, CI installs it on a `kind` cluster, runs `helm test`, then upgrades to
+two replicas and tests again.
 
 ### Grounded reports (RAG)
 
@@ -169,6 +184,7 @@ vlm-inspect report                                    # tables + charts from res
 | `src/vlm_inspect/rag/` | specification parsing, embeddings, retrieval, validated report writers |
 | `data/specs/`, `data/protocol.jsonl` | inspection specifications, retrieval eval set, the exact image split |
 | `migrations/`, `Dockerfile`, `compose.yaml` | Alembic migrations, container images, local stack |
+| `deploy/helm/vlm-inspect/` | Helm chart (API, PostgreSQL + pgvector, model cache, `helm test`) |
 | `docs/` | [plan](docs/IMPLEMENTATION_PLAN.md), [protocol](docs/EVAL_PROTOCOL.md), [benchmark report](docs/benchmark_report.md) |
 
 ## Data and licences

@@ -114,11 +114,18 @@ Methods compared:
 - ⬜ LLM report quality on the benchmark's real VLM findings: citation validity and agreement
   with the rule-based verdict
 
-## M5 - Kubernetes deployment ⬜
+## M5 - Kubernetes deployment ✅
 
-- Helm chart (API deployment, Postgres, model cache volume, probes, resource requests)
-- CI: create a `kind` cluster, `helm install`, run a smoke test through the service
-- Docs: the same chart on a managed Kubernetes service (EKS / AKS / GKE); no billed deployment
+- Helm chart `deploy/helm/vlm-inspect`: API Deployment (migrations in an init container,
+  serialised by a PostgreSQL advisory lock), bundled pgvector StatefulSet or external database
+  secret, model-cache PVC, optional YOLO weight download, liveness `/health` vs readiness `/ready`,
+  non-root with a read-only root filesystem, Ingress, `values-full.yaml` for the real models
+- `helm test` pod runs `vlm-inspect smoke-test` (inspect → read back → grounded report → metrics);
+  the Compose CI job uses the same command
+- CI: `helm lint --strict` on both values files, `kind` cluster, install, `helm test`, upgrade to two
+  replicas, `helm test` again
+- Managed Kubernetes (EKS / AKS / GKE) takes the same chart with `postgresql.enabled=false` and
+  `externalDatabase.existingSecret`; nothing is deployed to a billed cluster
 
 ## M6 - Showcase ⬜
 

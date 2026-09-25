@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vlm-inspect.fullname" . }}
+  labels:
+    {{- include "vlm-inspect.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "vlm-inspect.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vlm-inspect.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # Schema migrations before the API starts. Retries while PostgreSQL is still starting;
+        # concurrent replicas serialise on an advisory lock (migrations/env.py).
+        - name: migrate
+          image: {{ include "vlm-inspect.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - for i in $(seq 1 60); do alembic upgrade head && exit 0; sleep 3; done; exit 1
+          env:
+            - name: VLM_INSPECT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vlm-inspect.databaseSecret" . }}
+                  key: {{ include "vlm-inspect.databaseSecretKey" . }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.inspection.yoloWeightsUrl }}
+        - name: fetch-yolo-weights
+          image: {{ include "vlm-inspect.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - >-
+              test -s /models/yolo/best.pt || (mkdir -p /models/yolo &&
+              curl -sSfL -o /models/yolo/best.pt.part "$WEIGHTS_URL" &&
+              mv /models/yolo/best.pt.part /models/yolo/best.pt)
+          env:
+            - name: WEIGHTS_URL
+              value: {{ .Values.inspection.yoloWeightsUrl | quote }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+        {{- end }}
+      containers:
+        - name: api
+          image: {{ include "vlm-inspect.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["vlm-inspect", "serve", "--port", "8000"]
+          ports:
+            - {name: http, containerPort: 8000, protocol: TCP}
+          env:
+            - name: VLM_INSPECT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vlm-inspect.databaseSecret" . }}
+                  key: {{ include "vlm-inspect.databaseSecretKey" . }}
+            - name: VLM_INSPECT_API_METHODS
+              value: {{ toJson .Values.inspection.methods | quote }}
+            - name: VLM_INSPECT_VLM_PROMPT_VERSION
+              value: {{ .Values.inspection.promptVersion | quote }}
+            - name: VLM_INSPECT_REPORT_WRITER
+              value: {{ .Values.inspection.reportWriter | quote }}
+            - name: VLM_INSPECT_RAG_EMBEDDER
+              value: {{ .Values.inspection.ragEmbedder | quote }}
+            - name: VLM_INSPECT_MAX_UPLOAD_BYTES
+              value: {{ .Values.inspection.maxUploadBytes | quote }}
+            - name: VLM_INSPECT_YOLO_WEIGHTS
+              value: /models/yolo/best.pt
+            - name: HF_HOME
+              value: /models/hf
+            - name: XDG_CACHE_HOME
+              value: /tmp/.cache
+            {{- with .Values.inspection.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: models
+          {{- if .Values.modelCache.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.modelCache.existingClaim | default (printf "%s-models" (include "vlm-inspect.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

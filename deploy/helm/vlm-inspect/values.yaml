@@ -1,0 +1,102 @@
+# Defaults run the slim image with the stub inspector and a bundled PostgreSQL: enough to try the
+# API and to test the chart. values-full.yaml enables the real models.
+
+image:
+  # No image is published; build it and push it to your registry (or `kind load` it):
+  #   docker build --target api -t vlm-inspect:api .      # slim, stub inspector
+  #   docker build --target full -t vlm-inspect:full .    # + PyTorch, Qwen3-VL, YOLO
+  repository: vlm-inspect
+  tag: api
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# More than one replica is safe: migrations serialise on a PostgreSQL advisory lock. With the model
+# cache enabled, replicas on different nodes need a ReadWriteMany storage class.
+replicaCount: 1
+
+inspection:
+  methods: ["stub"]          # first entry is the default; stub | yolo | qwen-zero | qwen-oneshot
+  promptVersion: v1          # v1 (simplified defect lists) or v2 (VisA taxonomy)
+  reportWriter: rules        # rules, or llm (needs a qwen method)
+  ragEmbedder: hashing       # hashing, or minilm (downloads a 90 MB model into the cache)
+  maxUploadBytes: 26214400
+  # Optional: downloaded into the model cache on first start if missing.
+  yoloWeightsUrl: ""
+  extraEnv: []               # more VLM_INSPECT_* settings, as a list of {name, value}
+
+# Hugging Face and YOLO weights (Qwen3-VL-2B is about 4.5 GB). Without it they go to an emptyDir
+# and are downloaded again whenever a pod starts.
+modelCache:
+  enabled: false
+  size: 20Gi
+  storageClass: ""
+  accessModes: [ReadWriteOnce]
+  existingClaim: ""
+
+# Bundled single-instance PostgreSQL with pgvector, for development, CI and small installations.
+postgresql:
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: pg17
+    pullPolicy: IfNotPresent
+  auth:
+    username: vlm
+    database: vlm_inspect
+    password: ""             # generated on install and kept across upgrades when empty
+  persistence:
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+
+# Used when postgresql.enabled is false, e.g. a managed PostgreSQL with the vector extension.
+externalDatabase:
+  existingSecret: ""         # Secret holding a SQLAlchemy URL, postgresql+psycopg://...
+  existingSecretKey: database-url
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: vlm-inspect.local
+  tls: []
+
+# Sized for the stub image. The full image with Qwen3-VL needs about 4 CPUs and 14 Gi.
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {memory: 1Gi}
+
+startupProbe:
+  httpGet: {path: /health, port: http}
+  periodSeconds: 5
+  failureThreshold: 60
+livenessProbe:
+  httpGet: {path: /health, port: http}
+  periodSeconds: 20
+  timeoutSeconds: 5
+readinessProbe:
+  httpGet: {path: /ready, port: http}
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile: {type: RuntimeDefault}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

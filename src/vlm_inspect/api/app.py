@@ -255,15 +255,31 @@ def to_out(record: db.Inspection) -> InspectionOut:
 # --------------------------------------------------------------------------- endpoints
 
 
-@router.get("/health", response_model=HealthOut)
-def health(session: SessionDep, pool: PoolDep) -> HealthOut:
+def _database_status(session: Session) -> str:
     try:
         session.execute(text("SELECT 1"))
-        database = "ok"
     except Exception as exc:
-        database = f"error: {type(exc).__name__}"
+        return f"error: {type(exc).__name__}"
+    return "ok"
+
+
+@router.get("/health", response_model=HealthOut)
+def health(session: SessionDep, pool: PoolDep) -> HealthOut:
+    """Liveness: the process answers, whatever the state of the database."""
+    database = _database_status(session)
     status = "ok" if database == "ok" else "degraded"
     return HealthOut(status=status, database=database, methods=pool.methods)
+
+
+@router.get("/ready", response_model=HealthOut)
+def ready(session: SessionDep, pool: PoolDep, response: Response) -> HealthOut:
+    """Readiness: 503 until the database answers, so no traffic is routed to a pod without it."""
+    database = _database_status(session)
+    if database != "ok":
+        response.status_code = 503
+    return HealthOut(
+        status="ok" if database == "ok" else "unavailable", database=database, methods=pool.methods
+    )
 
 
 @router.get("/parts", response_model=list[PartOut])
