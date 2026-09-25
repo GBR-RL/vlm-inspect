@@ -22,7 +22,13 @@ def extract_json(text: str) -> Any:
     candidates = [fenced.group(1)] if fenced else []
     candidates.append(text)
     for candidate in candidates:
-        for opener, closer in (("[", "]"), ("{", "}")):
+        # Try the outermost structure first: whichever bracket opens earlier. Checking "[" first
+        # would pull the inner list out of an object such as {"citations": ["A"]}.
+        def first(char: str, text: str = candidate) -> int:
+            index = text.find(char)
+            return index if index >= 0 else len(text)
+
+        for opener, closer in sorted((("[", "]"), ("{", "}")), key=lambda pair: first(pair[0])):
             start = candidate.find(opener)
             end = candidate.rfind(closer)
             if start != -1 and end > start:
