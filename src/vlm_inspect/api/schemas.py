@@ -1,0 +1,45 @@
+"""Response models of the inspection API."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+from vlm_inspect.types import Box
+
+
+class FindingOut(BaseModel):
+    label: str
+    score: float
+    box: Box
+
+
+class InspectionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    part: str
+    method: str
+    model_version: str
+    image_sha256: str
+    width: int
+    height: int
+    is_defective: bool
+    score: float
+    threshold: float
+    latency_ms: float
+    findings: list[FindingOut]
+
+
+class PartOut(BaseModel):
+    name: str
+    description: str
+    defect_types: list[str]
+
+
+class HealthOut(BaseModel):
+    status: str
+    database: str
+    methods: list[str]

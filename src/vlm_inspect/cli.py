@@ -174,6 +174,15 @@ def evaluate(
         typer.echo(json.dumps({"category": category, **report}, indent=2))
 
 
+@app.command("serve")
+def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
+    """Runs the inspection API (settings from VLM_INSPECT_* environment variables)."""
+    import uvicorn
+
+    # One process: models are large and each is guarded by a lock; scale with replicas instead.
+    uvicorn.run("vlm_inspect.api.app:create_app", factory=True, host=host, port=port)
+
+
 @app.command("report")
 def report(
     results_dir: Annotated[
