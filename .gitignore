@@ -1,0 +1,25 @@
+# Environments and caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data, models and results (downloaded or generated; never committed)
+data/raw/
+data/visa/
+data/yolo/
+runs/
+results/
+mlruns/
+models/
+*.pt
+*.onnx
+*.safetensors
+
+# IDEs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
