@@ -12,6 +12,8 @@ from vlm_inspect.types import Box, Finding
 QWEN_COORD_SCALE = 1000.0
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+# One flat JSON object that contains a box; used to salvage output cut off mid-list.
+_BOX_OBJECT = re.compile(r"\{[^{}]*\"bbox(?:_2d)?\"\s*:\s*\[[^\]]*\][^{}]*\}")
 
 
 def extract_json(text: str) -> Any:
@@ -41,8 +43,15 @@ def parse_findings(text: str, width: int, height: int, score: float) -> list[Fin
     if isinstance(data, dict):
         data = data.get("defects", data.get("objects", [data]))
     if not isinstance(data, list):
-        return []
-    findings = []
+        # Generation often stops at the token limit mid-list: keep every complete box object.
+        data = []
+        for match in _BOX_OBJECT.finditer(text):
+            try:
+                data.append(json.loads(match.group(0)))
+            except json.JSONDecodeError:
+                continue
+    findings: list[Finding] = []
+    seen: set[tuple[float, float, float, float]] = set()
     for item in data:
         if not isinstance(item, dict):
             continue
@@ -61,8 +70,10 @@ def parse_findings(text: str, width: int, height: int, score: float) -> list[Fin
             x2=min(float(width), x2 / QWEN_COORD_SCALE * width),
             y2=min(float(height), y2 / QWEN_COORD_SCALE * height),
         )
-        if box.area <= 0:
+        key = (round(box.x1), round(box.y1), round(box.x2), round(box.y2))
+        if box.area <= 0 or key in seen:  # small VLMs often repeat the same box
             continue
+        seen.add(key)
         label = str(item.get("label", "defect")) or "defect"
         findings.append(Finding(box=box, label=label, score=score))
     return findings

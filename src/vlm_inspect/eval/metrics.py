@@ -11,6 +11,9 @@ import numpy as np
 from vlm_inspect.types import Box
 
 LOCALIZATION_IOU = 0.1  # loose on purpose: defect extents are fuzzy (see docs/EVAL_PROTOCOL.md)
+# A "pointing" box may cover at most this fraction of the image, so a whole-image box cannot
+# trivially contain every defect.
+POINTING_MAX_AREA_FRACTION = 0.25
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +89,27 @@ def localization_hit(
 ) -> bool:
     """True if any predicted box overlaps a ground-truth defect box with IoU >= threshold."""
     return any(p.iou(t) >= iou_threshold for p in predicted for t in truth)
+
+
+def pointing_hit(
+    predicted: Sequence[Box],
+    truth: Sequence[Box],
+    image_area: float,
+    max_area_fraction: float = POINTING_MAX_AREA_FRACTION,
+) -> bool:
+    """True if a ground-truth defect's centre lies inside a predicted box of bounded size.
+
+    Measures "points at the right place" for models that box the affected object rather than
+    the defect itself (e.g. the whole candle around a chipped edge), which strict IoU misses.
+    """
+    for p in predicted:
+        if p.area > max_area_fraction * image_area:
+            continue
+        for t in truth:
+            cx, cy = (t.x1 + t.x2) / 2, (t.y1 + t.y2) / 2
+            if p.x1 <= cx <= p.x2 and p.y1 <= cy <= p.y2:
+                return True
+    return False
 
 
 def latency_summary(latencies_ms: Sequence[float]) -> dict[str, float]:

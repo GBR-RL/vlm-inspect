@@ -26,6 +26,9 @@ from vlm_inspect.parts import PartSpec, get_part
 from vlm_inspect.types import InspectionResult
 
 SYSTEM_PROMPT = "You are a meticulous industrial visual inspection system."
+# Decoding dominates CPU cost (~0.4 s per token for a 2B model on 4 cores), and small VLMs tend
+# to enumerate near-duplicate boxes until the token limit, so the list is capped explicitly.
+MAX_DEFECTS = 3
 
 
 def classification_prompt(part: PartSpec, one_shot: bool) -> str:
@@ -45,7 +48,7 @@ def classification_prompt(part: PartSpec, one_shot: bool) -> str:
 
 def localization_prompt(part: PartSpec) -> str:
     return (
-        f"This image shows {part.description}. Locate every defect "
+        f"This image shows {part.description}. Locate the defects, at most {MAX_DEFECTS} "
         f"(possible types: {part.defect_list()}). Output a JSON list in which each item has "
         '"bbox_2d": [x1, y1, x2, y2] and "label" (the defect type). '
         "If there is no defect, output []."
@@ -70,7 +73,7 @@ class QwenVLInspector:
         *,
         max_side: int = 768,
         threshold: float = 0.5,
-        max_new_tokens: int = 256,
+        max_new_tokens: int = 160,
         references: dict[str, Path] | None = None,
         dtype: str = "float32",
         localize: bool = True,

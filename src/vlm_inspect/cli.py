@@ -98,15 +98,20 @@ def evaluate(
     method: Annotated[str, typer.Option(help="stub | yolo | qwen-zero | qwen-oneshot")],
     categories: CategoriesOpt = None,
     data_dir: Annotated[Path | None, typer.Option()] = None,
-    out_dir: Annotated[
-        Path | None, typer.Option(help="Defaults to results/<method>/<categories>")
+    results_dir: Annotated[
+        Path | None, typer.Option(help="Defaults to VLM_INSPECT_RESULTS_DIR")
     ] = None,
     limit: Annotated[
-        int | None, typer.Option(help="Evaluate only the first N images (smoke runs)")
+        int | None, typer.Option(help="Only the first N eval images (smoke runs)")
     ] = None,
+    calibration_images: Annotated[int, typer.Option(help="Golden samples per category")] = 20,
 ) -> None:
-    """Runs one method on the held-out evaluation images and writes predictions + summary."""
-    from vlm_inspect.eval.runner import run_eval
+    """Calibrates on defect-free images, then evaluates each category on its held-out images.
+
+    Results go to <results>/<method>/<category>/ (calibration.json, predictions.jsonl,
+    summary.json); runs resume where they stopped.
+    """
+    from vlm_inspect.eval.runner import calibrate, run_eval
     from vlm_inspect.inspectors import create_inspector
 
     settings = get_settings()
@@ -114,21 +119,30 @@ def evaluate(
     paths = _paths(data_dir or settings.data_dir)
     samples = visa.load_protocol(paths["protocol"])
     root = visa.find_visa_root(paths["extract"], cats[0])
-    eval_samples = [s for c in cats for s in visa.select(samples, subset="eval", category=c)]
     references = {c: root / visa.reference_image(samples, c).image for c in cats}
     inspector = create_inspector(method, settings, references=references)
-    threshold = {"yolo": settings.yolo_threshold}.get(method, settings.vlm_threshold)
-    target = out_dir or settings.results_dir / method / "-".join(cats)
-    summary = run_eval(inspector, eval_samples, root, target, threshold=threshold, limit=limit)
-    typer.echo(
-        json.dumps(
-            {
-                k: summary[k]
-                for k in ("method", "images", "image_metrics", "localization", "latency")
-            },
-            indent=2,
+    for category in cats:
+        out = (results_dir or settings.results_dir) / method / category
+        golden = sorted(
+            visa.select(samples, subset="background_val", category=category), key=lambda s: s.image
+        )[:calibration_images]
+        cal = calibrate(inspector, golden, root, cache=out / "calibration.json")
+        typer.echo(
+            f"[{category}] threshold {cal['threshold']:.4f} from {len(golden)} golden samples"
         )
-    )
+        summary = run_eval(
+            inspector,
+            visa.select(samples, subset="eval", category=category),
+            root,
+            out,
+            threshold=inspector.threshold,
+            limit=limit,
+        )
+        report = {
+            k: summary[k]
+            for k in ("images", "image_metrics", "localization", "pointing", "latency")
+        }
+        typer.echo(json.dumps({"category": category, **report}, indent=2))
 
 
 if __name__ == "__main__":

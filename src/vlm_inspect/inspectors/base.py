@@ -18,6 +18,7 @@ class Inspector(Protocol):
     """Inspects one image of a known part type."""
 
     name: str
+    threshold: float  # operating point: score >= threshold means defective
 
     def inspect(self, image: Image.Image, part: str) -> InspectionResult: ...
 
