@@ -149,7 +149,7 @@ def quality_vs_latency(data: dict[str, Any], out: Path) -> list[Path]:
                 label=METHOD_NAMES.get(method, method),
             )
             ax.annotate(
-                f"{y:.2f} AUROC · {x:.1f} s",
+                f"{y:.2f} AUROC · {x:.2f} s" if x < 1 else f"{y:.2f} AUROC · {x:.1f} s",
                 xy=(x, y),
                 xytext=(8, -3),
                 textcoords="offset points",
