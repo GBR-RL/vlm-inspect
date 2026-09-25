@@ -7,6 +7,7 @@ so a multi-hour CPU evaluation survives interruption and can be split across CI 
 from __future__ import annotations
 
 import json
+import math
 import os
 import platform
 import sys
@@ -15,14 +16,17 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from PIL import Image
 
 from vlm_inspect.data.visa import Sample, load_mask_boxes
 from vlm_inspect.eval.metrics import (
     LOCALIZATION_IOU,
+    POINTING_MAX_AREA_FRACTION,
     image_metrics,
     latency_summary,
     localization_hit,
+    pointing_hit,
 )
 from vlm_inspect.inspectors.base import Inspector
 
@@ -54,6 +58,52 @@ def _peak_rss_mb() -> float | None:
     return float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1024
 
 
+CALIBRATION_QUANTILE = 0.95
+
+
+def calibrate(
+    inspector: Inspector,
+    normals: Sequence[Sample],
+    visa_root: Path,
+    cache: Path | None = None,
+    quantile: float = CALIBRATION_QUANTILE,
+) -> dict[str, Any]:
+    """Sets the operating threshold from defect-free "golden sample" images only.
+
+    Every production line has known-good parts; labelled defects are the scarce resource. The
+    threshold is the `quantile` of the method's scores on the golden samples, so roughly
+    (1 - quantile) of good parts would raise an alarm. The same rule applies to every method, and
+    it never looks at a defect, which keeps the zero-shot VLM label-free.
+    """
+    if cache is not None and cache.exists():
+        result: dict[str, Any] = json.loads(cache.read_text(encoding="utf-8"))
+    else:
+        if any(s.is_anomaly for s in normals):
+            raise ValueError("calibration must use defect-free images only")
+        operating = inspector.threshold
+        inspector.threshold = math.inf  # score only: nothing is flagged, nothing is localised
+        try:
+            scores = []
+            for sample in normals:
+                with Image.open(visa_root / sample.image) as img:
+                    scores.append(inspector.inspect(img.convert("RGB"), sample.category).score)
+        finally:
+            inspector.threshold = operating
+        # "higher" picks an observed score; nextafter makes that golden sample itself not flagged.
+        value = float(np.quantile(scores, quantile, method="higher"))
+        result = {
+            "threshold": float(np.nextafter(value, math.inf)),
+            "quantile": quantile,
+            "images": [s.image for s in normals],
+            "scores": scores,
+        }
+        if cache is not None:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    inspector.threshold = float(result["threshold"])
+    return result
+
+
 def run_eval(
     inspector: Inspector,
     samples: Sequence[Sample],
@@ -81,6 +131,7 @@ def run_eval(
         for sample in todo:
             with Image.open(visa_root / sample.image) as img:
                 image = img.convert("RGB")
+            image_area = float(image.width * image.height)
             result = inspector.inspect(image, sample.category)
             truth = load_mask_boxes(visa_root, sample)
             predicted = [f.box for f in result.findings]
@@ -93,6 +144,9 @@ def run_eval(
                 "latency_ms": result.latency_ms,
                 "n_findings": len(predicted),
                 "hit": localization_hit(predicted, truth) if sample.is_anomaly else None,
+                "pointing_hit": (
+                    pointing_hit(predicted, truth, image_area) if sample.is_anomaly else None
+                ),
                 "findings": [f.model_dump() for f in result.findings],
                 "raw_output": result.raw_output,
             }
@@ -131,6 +185,14 @@ def summarize(
             # Of the defective images the method flagged, how many boxes landed on the defect.
             "hit_rate_when_detected": (
                 sum(1 for r in detected if r["hit"]) / len(detected) if detected else None
+            ),
+        },
+        "pointing": {
+            "max_box_area_fraction": POINTING_MAX_AREA_FRACTION,
+            "hit_rate": (
+                sum(1 for r in defective if r.get("pointing_hit")) / len(defective)
+                if defective
+                else None
             ),
         },
         "latency": latency_summary([float(r["latency_ms"]) for r in rows]),

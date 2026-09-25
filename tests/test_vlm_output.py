@@ -76,3 +76,20 @@ def test_fit_longest_side_keeps_aspect_ratio() -> None:
 def test_unknown_part_is_rejected() -> None:
     with pytest.raises(KeyError, match="known"):
         get_part("gearbox")
+
+
+def test_recovers_boxes_from_output_truncated_at_the_token_limit() -> None:
+    # Shape of real Qwen3-VL output that hit max_new_tokens mid-list (no closing bracket).
+    text = (
+        '```json\n[\n  {"bbox_2d": [129, 295, 160, 330], "label": "bent component"},\n'
+        '  {"bbox_2d": [129, 645, 159, 680], "label": "bent component"},\n  {"bbox_2d": [160, 64'
+    )
+    findings = parse_findings(text, width=1000, height=1000, score=0.6)
+    assert [f.box.x1 for f in findings] == [129.0, 129.0]
+
+
+def test_duplicate_boxes_are_reported_once() -> None:
+    text = (
+        '[{"bbox_2d": [10, 10, 50, 50], "label": "a"}, {"bbox_2d": [10, 10, 50, 50], "label": "b"}]'
+    )
+    assert len(parse_findings(text, 1000, 1000, 0.5)) == 1

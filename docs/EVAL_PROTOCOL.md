@@ -36,11 +36,20 @@ It is never an evaluation image.
 
 - **Image level:** defect score per image (YOLO: best box confidence; VLM: probability of "Yes"
   as the next token). AUROC and average precision over the eval set; precision, recall, F1 and
-  accuracy at the method's operating threshold (YOLO 0.25, VLM 0.5); best achievable F1 over all
-  thresholds.
+  accuracy at the method's operating threshold; best achievable F1 over all thresholds.
+- **Operating threshold** (fixed after the smoke test, before any evaluation run): calibrated per
+  category and method on 20 defect-free `background_val` images ("golden samples") as the 95th
+  percentile of the method's scores. It uses no defect labels, so the zero-shot VLM stays
+  label-free. The smoke test showed the VLM ranking defects correctly but with every score below
+  0.5, so any fixed threshold would say more about calibration than about inspection.
 - **Localisation:** ground-truth boxes are the connected components (≥ 16 px) of VisA's pixel
   masks. A defective image is a *hit* when the method flags it and at least one predicted box has
   IoU ≥ 0.1 with a ground-truth box. The threshold is deliberately loose: defect extents are fuzzy
   and the question is "does it point at the defect", not segmentation quality.
+- **Pointing** (added after a 2-image smoke test, before any evaluation run): a defective
+  image is a pointing hit when the centre of a ground-truth defect box lies inside a predicted
+  box covering at most 25 % of the image. The smoke test showed the VLM boxing the *affected
+  object* (a whole candle around a chipped edge) rather than the defect itself; strict IoU
+  scores that as a miss, the pointing metric as a hit. Both are reported.
 - **Cost:** wall-clock latency per image (p50, p95), peak resident memory, all on the same
   machine, which is recorded with every result.

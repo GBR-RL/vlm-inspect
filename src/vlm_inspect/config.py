@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # CPU latency; small defects vanish if it is too low. Measured trade-off in DESIGN_NOTES.
     vlm_max_side: int = 768
     vlm_threshold: float = 0.5
-    vlm_max_new_tokens: int = 256
+    vlm_max_new_tokens: int = 160
 
     # Trained detector
     yolo_weights: Path = Path("models/yolo/best.pt")

@@ -49,3 +49,30 @@ def test_run_eval_resumes_without_repeating_work(tmp_path) -> None:
     summary = run_eval(StubInspector(), samples, tmp_path / "visa", out, threshold=0.5)
     assert len((out / "predictions.jsonl").read_text().splitlines()) == 4
     assert summary["images"] == 4
+
+
+def test_calibration_uses_golden_samples_and_caches(tmp_path) -> None:
+    import pytest
+
+    from vlm_inspect.eval.runner import calibrate
+
+    samples = _make_dataset(tmp_path / "visa")
+    normals = [s for s in samples if not s.is_anomaly]
+    inspector = StubInspector(threshold=0.5)
+    cache = tmp_path / "cal" / "calibration.json"
+    result = calibrate(inspector, normals, tmp_path / "visa", cache=cache)
+    dark = 30 / 255
+    assert result["threshold"] > dark  # a golden sample is never flagged by its own threshold
+    assert result["threshold"] == pytest.approx(dark)
+    assert inspector.threshold == result["threshold"]
+    assert cache.exists()
+
+    other = StubInspector(threshold=0.9)
+    assert (
+        calibrate(other, normals, tmp_path / "visa", cache=cache)["threshold"]
+        == result["threshold"]
+    )
+    assert other.threshold == result["threshold"], "a cached calibration is applied too"
+
+    with pytest.raises(ValueError, match="defect-free"):
+        calibrate(StubInspector(), samples, tmp_path / "visa")

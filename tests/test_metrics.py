@@ -50,3 +50,15 @@ def test_latency_summary() -> None:
     assert s["p50_ms"] == 25.0
     assert s["max_ms"] == 40.0
     assert math.isnan(latency_summary([])["p50_ms"])
+
+
+def test_pointing_hit_accepts_object_level_boxes_but_not_huge_ones() -> None:
+    from vlm_inspect.eval.metrics import pointing_hit
+
+    defect = [Box(x1=40, y1=40, x2=44, y2=44)]  # tiny defect centred at (42, 42)
+    candle = Box(x1=20, y1=20, x2=60, y2=60)  # the whole object around it: 16 % of the image
+    assert pointing_hit([candle], defect, image_area=100 * 100)
+    assert not localization_hit([candle], defect)  # strict IoU calls this a miss
+    whole_image = Box(x1=0, y1=0, x2=100, y2=100)
+    assert not pointing_hit([whole_image], defect, image_area=100 * 100)
+    assert not pointing_hit([Box(x1=60, y1=60, x2=70, y2=70)], defect, image_area=100 * 100)
