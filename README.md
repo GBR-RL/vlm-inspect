@@ -13,10 +13,15 @@ module; look for bent, melted or missing components and scratches"*. No labelled
 training. That is a strong promise for production lines, where defect data is scarce and new
 defect types keep appearing. This repository measures what the promise is worth. An open-weight
 VLM (**Qwen3-VL-2B**, zero-shot and one-shot) is compared with a **YOLO detector trained on
-labelled defects**, on the same held-out industrial images, together with the latency each costs
-on a CPU. Around the models sits the engineering that production needs: an inspection API with
-PostgreSQL, calibrated operating points, reports grounded in inspection specifications (RAG over
-pgvector), containers, Kubernetes and CI.
+labelled defects**, on the same held-out industrial images, together with the latency each costs.
+Around the models sits the engineering that production needs: an inspection API with PostgreSQL,
+calibrated operating points, reports grounded in inspection specifications (RAG over pgvector),
+containers, Kubernetes and CI.
+
+The same code runs on a GPU or a CPU: it picks a CUDA (or Apple MPS) device when there is one and
+falls back to the CPU otherwise (`VLM_INSPECT_DEVICE` overrides it). The benchmark below was run
+on 4-core CPUs on purpose, the hardest setting for a vision-language model; on a GPU both models
+only get faster, and the comparison between them is the same.
 
 ![Demo: a candle image is inspected by Qwen3-VL zero-shot, which boxes a colour spot and writes a report citing clause CND-COL-01; then a PCB is inspected by YOLO](docs/assets/demo.gif)
 
@@ -133,7 +138,7 @@ docker compose up --build            # API + PostgreSQL (pgvector); open http://
 - **Persistence:** SQLAlchemy 2 with Alembic migrations. A test applies the migrations and compares
   the result with the ORM models; it caught a `FLOAT` vs `DOUBLE PRECISION` drift on its first run.
 - **Images:** the slim `api` target runs the stub inspector (CI, demos); the `full` target adds
-  CPU PyTorch, Qwen3-VL and YOLO.
+  PyTorch, Qwen3-VL and YOLO (CPU wheels by default; build on a CUDA base image for GPUs).
 
 ### Kubernetes
 
@@ -184,7 +189,8 @@ with the reason stored. A report can never cite a clause that does not exist.
 ```bash
 git clone https://github.com/GBR-RL/vlm-inspect && cd vlm-inspect
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install torch torchvision          # CUDA build on GPU machines; for CPU only:
+                                       #   --index-url https://download.pytorch.org/whl/cpu
 pip install -e ".[vlm,yolo,plots,dev]"
 
 vlm-inspect data-prepare                              # VisA download (1.9 GB, once) + protocol

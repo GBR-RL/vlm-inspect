@@ -62,12 +62,15 @@ class HashingEmbedder:
 
 
 class SentenceTransformerEmbedder:
-    """Semantic embeddings (sentence-transformers, all-MiniLM-L6-v2 by default; runs on CPU)."""
+    """Semantic embeddings (sentence-transformers, all-MiniLM-L6-v2 by default)."""
 
     def __init__(self, model_id: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
         from sentence_transformers import SentenceTransformer
 
-        self.model = SentenceTransformer(model_id, device="cpu")
+        from vlm_inspect.config import get_settings
+        from vlm_inspect.device import pick_device
+
+        self.model = SentenceTransformer(model_id, device=pick_device(get_settings().device))
         self.name = model_id.rsplit("/", 1)[-1]
         self.dim = int(self.model.get_sentence_embedding_dimension() or EMBEDDING_DIM)
 

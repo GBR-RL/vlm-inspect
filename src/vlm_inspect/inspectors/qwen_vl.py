@@ -78,14 +78,19 @@ class QwenVLInspector:
         dtype: str = "float32",
         prompt_version: str = "v2",
         localize: bool = True,
+        device: str = "auto",
     ) -> None:
         import torch
         from transformers import AutoModelForImageTextToText, AutoProcessor
+
+        from vlm_inspect.device import pick_device
 
         self._torch = torch
         self.model = AutoModelForImageTextToText.from_pretrained(
             model_id, dtype=getattr(torch, dtype)
         )
+        self.device = pick_device(device)
+        self.model.to(self.device)
         self.model.eval()
         self.processor = AutoProcessor.from_pretrained(model_id)
         self.max_side = max_side
@@ -120,7 +125,7 @@ class QwenVLInspector:
             add_generation_prompt=True,
             return_dict=True,
             return_tensors="pt",
-        )
+        ).to(self.device)
 
     def defect_probability(self, image: Image.Image, part: PartSpec) -> float:
         reference = self.references.get(part.name)

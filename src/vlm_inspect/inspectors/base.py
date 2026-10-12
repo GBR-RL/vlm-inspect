@@ -37,7 +37,10 @@ def create_inspector(
         from vlm_inspect.inspectors.yolo import YoloInspector
 
         return YoloInspector(
-            settings.yolo_weights, imgsz=settings.yolo_imgsz, threshold=settings.yolo_threshold
+            settings.yolo_weights,
+            imgsz=settings.yolo_imgsz,
+            threshold=settings.yolo_threshold,
+            device=settings.device,
         )
     if method in ("qwen-zero", "qwen-oneshot"):
         from vlm_inspect.inspectors.qwen_vl import QwenVLInspector
@@ -51,5 +54,6 @@ def create_inspector(
             max_new_tokens=settings.vlm_max_new_tokens,
             references=references if method == "qwen-oneshot" else None,
             prompt_version=settings.vlm_prompt_version,
+            device=settings.device,
         )
     raise ValueError(f"unknown method '{method}' (known: {', '.join(METHODS)})")

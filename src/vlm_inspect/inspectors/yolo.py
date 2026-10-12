@@ -14,14 +14,19 @@ from vlm_inspect.types import Box, Finding, InspectionResult
 class YoloInspector:
     name = "yolo"
 
-    def __init__(self, weights: Path, imgsz: int = 1024, threshold: float = 0.25) -> None:
+    def __init__(
+        self, weights: Path, imgsz: int = 1024, threshold: float = 0.25, device: str = "auto"
+    ) -> None:
         from ultralytics import YOLO
+
+        from vlm_inspect.device import pick_device, ultralytics_device
 
         if not Path(weights).exists():
             raise FileNotFoundError(
                 f"YOLO weights not found: {weights} (run `vlm-inspect train-yolo`)"
             )
         self.model = YOLO(str(weights))
+        self.device = ultralytics_device(pick_device(device))
         self.imgsz = imgsz
         self.threshold = threshold
 
@@ -33,6 +38,7 @@ class YoloInspector:
             np.asarray(image.convert("RGB"))[:, :, ::-1],
             imgsz=self.imgsz,
             conf=0.001,
+            device=self.device,
             verbose=False,
         )[0]
         boxes = result.boxes
