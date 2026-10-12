@@ -80,10 +80,12 @@ def train_yolo(
     batch: int = 8,
     data_dir: Annotated[Path | None, typer.Option()] = None,
     out_dir: Annotated[Path, typer.Option()] = Path("models"),
-    device: str = "cpu",
+    device: Annotated[str, typer.Option(help="auto, cpu, cuda, cuda:1 or mps")] = "auto",
 ) -> None:
     """Trains the supervised baseline on the detector subsets (single class: defect)."""
     from ultralytics import YOLO
+
+    from vlm_inspect.device import pick_device, ultralytics_device
 
     data_yaml = _paths(data_dir or get_settings().data_dir)["yolo"] / "data.yaml"
     if not data_yaml.exists():
@@ -93,7 +95,7 @@ def train_yolo(
         epochs=epochs,
         imgsz=imgsz,
         batch=batch,
-        device=device,
+        device=ultralytics_device(pick_device(device)),
         # Absolute on purpose: Ultralytics nests relative project paths under its runs/ folder.
         project=str(out_dir.resolve()),
         name="yolo",
@@ -217,7 +219,7 @@ def report_eval(
     if llm:
         from vlm_inspect.inspectors.qwen_vl import QwenVLInspector
 
-        model = QwenVLInspector(settings.vlm_model_id)
+        model = QwenVLInspector(settings.vlm_model_id, device=settings.device)
         llm_writer = LLMReporter(index, general, lambda prompt: model.generate_text(prompt, 200))
 
     rows = rq.load_rows(results, method)
